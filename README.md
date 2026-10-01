@@ -31,6 +31,16 @@ Le moteur examine plusieurs itinéraires et ne retient pas forcément le plus ra
 - **Classement honnête** : le rang est partagé en cas d'égalité (mention « ex æquo ») et le pourcentage affiché est un **percentile relatif au lot comparé**, jamais une note absolue.
 - **Appels parallélisés** (4 en parallèle) pour comparer plus vite.
 
+## Coller un texte (extraction d'adresses)
+
+Le bouton **« Coller un texte »** analyse un texte libre (par ex. une fiche Doctolib) et détecte les adresses postales :
+
+- voie et code postal / ville sur deux lignes successives ;
+- adresse complète sur une seule ligne (« 67 Rue Voltaire 92300 Levallois-Perret ») ;
+- numéros `bis` / `ter` / `quater`, mentions `CEDEX`, principaux types de voie.
+
+Les adresses détectées sont dédoublonnées puis ajoutées au champ « Adresses de destination ». L'extraction ne gère pas les lieux-dits, les adresses sans numéro ni les adresses hors de France ; c'est ensuite le géocodage qui valide chaque adresse.
+
 ## Sources
 
 - Géocodage : https://data.geopf.fr/geocodage/search
@@ -61,7 +71,7 @@ npm test              # suite de tests
 npm run test:coverage # rapport de couverture
 ```
 
-Les tests couvrent le géocodage (validation, cache, erreurs), le routage (coût, repli marche), le classement (rang, ex æquo, percentile, parallélisation), la couche HTTP (timeout, retry, cache), le cache et la construction des liens Google Maps / Citymapper.
+Les tests couvrent le géocodage (validation, cache, erreurs), le routage (coût, repli marche), le classement (rang, ex æquo, percentile, parallélisation), la couche HTTP (timeout, retry, cache), le cache, la construction des liens Google Maps / Citymapper et l'extraction d'adresses depuis un texte.
 
 ## GitHub Pages
 

@@ -3,6 +3,7 @@ import {
   ArrowRightLeft,
   Bus,
   CableCar,
+  ClipboardPaste,
   Clock,
   ExternalLink,
   Footprints,
@@ -13,7 +14,9 @@ import {
   Train,
   TrainFront,
   Trophy,
+  Wand2,
 } from 'lucide-react';
+import { addressKey, extractAddresses } from './services/addressExtraction';
 import { browserCache } from './services/cache';
 import { DEFAULT_TRANSIT_TYPES, MAX_ADDRESSES, rankAddresses } from './services/ranking';
 import type { GeocodedAddress, RankedAddress, TransitType } from './types';
@@ -83,6 +86,9 @@ export default function App() {
   const [loading, setLoading] = useState(false);
   const [progress, setProgress] = useState('');
   const [globalError, setGlobalError] = useState('');
+  const [showPaste, setShowPaste] = useState(false);
+  const [pasteText, setPasteText] = useState('');
+  const [extractStatus, setExtractStatus] = useState('');
 
   const addresses = useMemo(
     () =>
@@ -97,6 +103,30 @@ export default function App() {
   const toggleType = (type: TransitType) => {
     setSelectedTypes((current) =>
       current.includes(type) ? current.filter((item) => item !== type) : [...current, type],
+    );
+  };
+
+  const handleExtract = () => {
+    const found = extractAddresses(pasteText);
+    if (!found.length) {
+      setExtractStatus('Aucune adresse détectée dans ce texte.');
+      return;
+    }
+
+    const seen = new Set(addresses.map(addressKey));
+    const merged = [...addresses];
+    for (const address of found) {
+      const key = addressKey(address);
+      if (seen.has(key)) continue;
+      seen.add(key);
+      merged.push(address);
+    }
+
+    const limited = merged.slice(0, MAX_ADDRESSES);
+    setAddressesText(limited.join('\n'));
+    setExtractStatus(
+      `${found.length} adresse${found.length > 1 ? 's' : ''} détectée${found.length > 1 ? 's' : ''} · ` +
+        `${limited.length} destination${limited.length > 1 ? 's' : ''} au total.`,
     );
   };
 
@@ -152,6 +182,8 @@ export default function App() {
     setReferenceAddress(null);
     setResults([]);
     setGlobalError('');
+    setPasteText('');
+    setExtractStatus('');
     localStorage.removeItem(REFERENCE_STORAGE_KEY);
     localStorage.removeItem(ADDRESSES_STORAGE_KEY);
   };
@@ -225,7 +257,44 @@ export default function App() {
               </label>
               <span>Une adresse par ligne · 1 à 20 destinations</span>
             </div>
+            <button
+              type="button"
+              className="text-button extract-toggle"
+              onClick={() => setShowPaste((current) => !current)}
+              aria-expanded={showPaste}
+            >
+              <ClipboardPaste size={15} />
+              {showPaste ? 'Fermer' : 'Coller un texte'}
+            </button>
           </div>
+
+          {showPaste && (
+            <div className="paste-panel">
+              <p className="paste-hint">
+                Collez un texte (par ex. une fiche Doctolib) : les adresses sont détectées
+                automatiquement.
+              </p>
+              <textarea
+                className="paste-input"
+                rows={6}
+                value={pasteText}
+                onChange={(event) => setPasteText(event.target.value)}
+                placeholder={'Ex.\n\nDr Thomas Lafont\nMédecin généraliste\n\n67 Rue Voltaire\n92300 Levallois-Perret'}
+              />
+              <div className="paste-actions">
+                <button
+                  type="button"
+                  className="secondary-button"
+                  onClick={handleExtract}
+                  disabled={!pasteText.trim()}
+                >
+                  <Wand2 size={16} />
+                  Extraire les adresses
+                </button>
+                {extractStatus && <span className="paste-status">{extractStatus}</span>}
+              </div>
+            </div>
+          )}
 
           <textarea
             id="addresses"
