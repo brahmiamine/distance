@@ -3,12 +3,17 @@ import type { GeocodedAddress, TransitStop, TransitType } from '../types';
 const IDFM_STOPS_URL =
   'https://data.iledefrance-mobilites.fr/api/explore/v2.1/catalog/datasets/arrets/records';
 
+type GeoPoint =
+  | [number, number]
+  | { lat?: number; lon?: number }
+  | string;
+
 interface IdfmStopRecord {
   arrid?: string;
   arrname?: string;
   arrtype?: string;
   arrtown?: string;
-  arrgeopoint?: [number, number];
+  arrgeopoint?: GeoPoint;
 }
 
 interface IdfmResponse {
@@ -26,6 +31,32 @@ function haversineDistanceMeters(lat1: number, lon1: number, lat2: number, lon2:
     Math.sin(dLat / 2) ** 2 +
     Math.cos(toRadians(lat1)) * Math.cos(toRadians(lat2)) * Math.sin(dLon / 2) ** 2;
   return 2 * radius * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+function parseGeoPoint(value: GeoPoint | undefined): { lat: number; lon: number } | null {
+  if (!value) return null;
+
+  if (Array.isArray(value)) {
+    const [lat, lon] = value;
+    if (Number.isFinite(lat) && Number.isFinite(lon)) return { lat, lon };
+    return null;
+  }
+
+  if (typeof value === 'object') {
+    const lat = Number(value.lat);
+    const lon = Number(value.lon);
+    if (Number.isFinite(lat) && Number.isFinite(lon)) return { lat, lon };
+    return null;
+  }
+
+  if (typeof value === 'string') {
+    const parts = value.split(',').map((part) => Number(part.trim()));
+    if (parts.length >= 2 && Number.isFinite(parts[0]) && Number.isFinite(parts[1])) {
+      return { lat: parts[0], lon: parts[1] };
+    }
+  }
+
+  return null;
 }
 
 function typeFilter(types: TransitType[]): string {
@@ -51,22 +82,22 @@ async function queryStops(
   }
 
   const data = (await response.json()) as IdfmResponse;
+  const records = Array.isArray(data.results) ? data.results : [];
 
-  return (data.results ?? [])
+  return records
     .map((record): TransitStop | null => {
-      const coords = record.arrgeopoint;
+      const coords = parseGeoPoint(record.arrgeopoint);
       const type = record.arrtype as TransitType | undefined;
       if (!coords || !type || !SUPPORTED_TYPES.has(type)) return null;
 
-      const [lat, lon] = coords;
       return {
-        id: record.arrid ?? `${record.arrname}-${lat}-${lon}`,
+        id: record.arrid ?? `${record.arrname}-${coords.lat}-${coords.lon}`,
         name: record.arrname ?? 'Arrêt sans nom',
         type,
         town: record.arrtown,
-        lat,
-        lon,
-        distanceMeters: haversineDistanceMeters(address.lat, address.lon, lat, lon),
+        lat: coords.lat,
+        lon: coords.lon,
+        distanceMeters: haversineDistanceMeters(address.lat, address.lon, coords.lat, coords.lon),
       };
     })
     .filter((stop): stop is TransitStop => stop !== null)
