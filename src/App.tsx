@@ -1,4 +1,19 @@
 import { FormEvent, useMemo, useState } from 'react';
+import {
+  ArrowRightLeft,
+  Bus,
+  CableCar,
+  Clock,
+  ExternalLink,
+  Footprints,
+  MapPin,
+  Navigation,
+  Route,
+  Sparkles,
+  Train,
+  TrainFront,
+  Trophy,
+} from 'lucide-react';
 import { geocodeAddress } from './services/geocoding';
 import { findRecommendedJourney } from './services/transitous';
 import type { GeocodedAddress, RankedAddress, TransitType } from './types';
@@ -12,14 +27,6 @@ const TYPE_LABELS: Record<TransitType, string> = {
   cableway: 'Téléphérique',
 };
 
-const TYPE_ICONS: Record<TransitType, string> = {
-  metro: 'M',
-  rail: 'R',
-  tram: 'T',
-  bus: 'B',
-  cableway: 'C',
-};
-
 const DEFAULT_TYPES: TransitType[] = ['metro', 'rail', 'tram', 'bus'];
 const REFERENCE_STORAGE_KEY = 'distance-transports-reference';
 const ADDRESSES_STORAGE_KEY = 'distance-transports-addresses';
@@ -31,6 +38,14 @@ const EXAMPLE_ADDRESSES = `73, boulevard de Bezons, 78500, SARTROUVILLE
 8 rue Catulle Mendès, 75017, PARIS
 86 rue cardinet, 75017, PARIS
 38, boulevard Raspail, 75007, PARIS`;
+
+function TransportIcon({ type, size = 18 }: { type: TransitType; size?: number }) {
+  if (type === 'metro') return <TrainFront size={size} strokeWidth={2.2} />;
+  if (type === 'rail') return <Train size={size} strokeWidth={2.2} />;
+  if (type === 'tram') return <TrainFront size={size} strokeWidth={1.8} />;
+  if (type === 'bus') return <Bus size={size} strokeWidth={2.2} />;
+  return <CableCar size={size} strokeWidth={2.2} />;
+}
 
 function formatDistance(value: number): string {
   if (value < 1000) return `${Math.round(value)} m`;
@@ -198,20 +213,45 @@ export default function App() {
   return (
     <main className="page-shell">
       <section className="hero">
-        <div className="eyebrow">Comparateur transport · Île-de-France</div>
-        <h1>Quelle adresse est la plus pratique depuis votre point de départ ?</h1>
-        <p>
-          L’adresse de référence est toujours le départ. Les destinations sont classées par
-          recommandation en privilégiant peu de marche, peu de correspondances, peu de transports
-          à prendre et un trajet global raisonnable.
-        </p>
+        <div className="hero-copy">
+          <div className="eyebrow animated-eyebrow">
+            <Sparkles size={14} />
+            Comparateur transport · Île-de-France
+          </div>
+          <h1>Quelle adresse est la plus pratique depuis votre point de départ ?</h1>
+          <p>
+            L’adresse de référence est toujours le départ. Les destinations sont classées par
+            recommandation en privilégiant peu de marche, peu de correspondances, peu de transports
+            à prendre et un trajet global raisonnable.
+          </p>
+        </div>
+
+        <div className="hero-visual" aria-hidden="true">
+          <div className="orbit orbit-one" />
+          <div className="orbit orbit-two" />
+          {(['metro', 'rail', 'tram', 'bus', 'cableway'] as TransitType[]).map((type, index) => (
+            <div
+              key={type}
+              className={`hero-mode mode-${type} hero-mode-${index + 1}`}
+              title={TYPE_LABELS[type]}
+            >
+              <TransportIcon type={type} size={22} />
+            </div>
+          ))}
+          <div className="hero-pin">
+            <MapPin size={24} />
+          </div>
+        </div>
       </section>
 
-      <section className="panel form-panel">
+      <section className="panel form-panel animated-panel">
         <form onSubmit={compare}>
           <div className="field-heading">
             <div>
-              <label htmlFor="reference">Adresse de départ</label>
+              <label htmlFor="reference">
+                <MapPin size={17} />
+                Adresse de départ
+              </label>
               <span>Adresse de référence utilisée comme origine pour tous les trajets</span>
             </div>
             <button type="button" className="text-button" onClick={clearAll}>
@@ -219,18 +259,24 @@ export default function App() {
             </button>
           </div>
 
-          <input
-            id="reference"
-            className="address-input"
-            value={referenceText}
-            onChange={(event) => setReferenceText(event.target.value)}
-            placeholder="Ex. 10 avenue des Champs-Élysées, 75008 Paris"
-            autoComplete="street-address"
-          />
+          <div className="input-shell">
+            <Navigation size={18} />
+            <input
+              id="reference"
+              className="address-input"
+              value={referenceText}
+              onChange={(event) => setReferenceText(event.target.value)}
+              placeholder="Ex. 10 avenue des Champs-Élysées, 75008 Paris"
+              autoComplete="street-address"
+            />
+          </div>
 
           <div className="field-heading list-heading">
             <div>
-              <label htmlFor="addresses">Adresses de destination</label>
+              <label htmlFor="addresses">
+                <Route size={17} />
+                Adresses de destination
+              </label>
               <span>Une adresse par ligne · 1 à 20 destinations</span>
             </div>
           </div>
@@ -253,7 +299,9 @@ export default function App() {
                     checked={selectedTypes.includes(type)}
                     onChange={() => toggleType(type)}
                   />
-                  <span className={`mode-icon mode-${type}`}>{TYPE_ICONS[type]}</span>
+                  <span className={`mode-icon mode-${type}`}>
+                    <TransportIcon type={type} size={17} />
+                  </span>
                   {TYPE_LABELS[type]}
                 </label>
               ))}
@@ -261,35 +309,49 @@ export default function App() {
           </fieldset>
 
           <div className="criteria-box">
-            <strong>Priorités du classement</strong>
-            <span>1. Peu de marche</span>
-            <span>2. Peu de correspondances / transports</span>
-            <span>3. Temps de trajet raisonnable</span>
-            <span>4. Distance globale plus courte</span>
+            <strong>
+              <Trophy size={17} />
+              Priorités du classement
+            </strong>
+            <span><Footprints size={16} /> Peu de marche</span>
+            <span><ArrowRightLeft size={16} /> Peu de correspondances</span>
+            <span><Clock size={16} /> Temps raisonnable</span>
+            <span><Navigation size={16} /> Distance plus courte</span>
           </div>
 
           {globalError && <div className="alert error">{globalError}</div>}
 
-          <button className="primary-button" type="submit" disabled={loading}>
-            {loading
-              ? 'Calcul des itinéraires…'
-              : `Classer ${addresses.length || ''} destination${addresses.length > 1 ? 's' : ''}`}
+          <button className={loading ? 'primary-button loading' : 'primary-button'} type="submit" disabled={loading}>
+            <span className="button-content">
+              {loading ? <span className="spinner" /> : <Sparkles size={18} />}
+              {loading
+                ? 'Calcul des itinéraires…'
+                : `Classer ${addresses.length || ''} destination${addresses.length > 1 ? 's' : ''}`}
+            </span>
           </button>
-          {progress && <p className="progress">{progress}</p>}
+          {progress && <p className="progress"><span />{progress}</p>}
         </form>
       </section>
 
       {referenceAddress && results.length > 0 && (
         <section className="results-section">
-          <div className="reference-card">
-            <span className="eyebrow">Départ unique</span>
-            <h2>{referenceAddress.label}</h2>
-            <p>Tous les itinéraires ci-dessous partent de cette adresse.</p>
+          <div className="reference-card result-reveal">
+            <div className="reference-icon">
+              <Navigation size={20} />
+            </div>
+            <div>
+              <span className="eyebrow">Départ unique</span>
+              <h2>{referenceAddress.label}</h2>
+              <p>Tous les itinéraires ci-dessous partent de cette adresse.</p>
+            </div>
           </div>
 
           <div className="results-heading">
             <div>
-              <span className="eyebrow">Recommandations</span>
+              <span className="eyebrow">
+                <Sparkles size={14} />
+                Recommandations
+              </span>
               <h2>Meilleures adresses pour les transports</h2>
             </div>
             <span className="method-note">Le rang #1 correspond au meilleur compromis</span>
@@ -298,17 +360,33 @@ export default function App() {
           <div className="results-list">
             {results.map((result, index) => (
               <article
-                className={index === 0 ? 'result-card top-result' : 'result-card'}
+                className={index === 0 ? 'result-card top-result result-reveal' : 'result-card result-reveal'}
                 key={`${result.address.input}-${index}`}
+                style={{ animationDelay: `${index * 90}ms` }}
               >
-                <div className="rank">#{index + 1}</div>
+                <div className={index === 0 ? 'rank rank-first' : 'rank'}>
+                  {index === 0 ? <Trophy size={20} /> : `#${index + 1}`}
+                </div>
                 <div className="result-main">
                   <div className="result-title-row">
-                    <h3>{result.address.label}</h3>
+                    <div className="destination-title">
+                      <MapPin size={17} />
+                      <h3>{result.address.label}</h3>
+                    </div>
                     {result.recommendationScore != null && (
-                      <div className="recommendation-badge">
-                        <strong>{result.recommendationScore}/100</strong>
-                        <span>{recommendationLabel(result.recommendationScore)}</span>
+                      <div className="recommendation-score">
+                        <div
+                          className="score-ring"
+                          style={{
+                            background: `conic-gradient(#3158e8 ${result.recommendationScore * 3.6}deg, #e6eaf3 0deg)`,
+                          }}
+                        >
+                          <div>
+                            <strong>{result.recommendationScore}</strong>
+                            <span>/100</span>
+                          </div>
+                        </div>
+                        <small>{recommendationLabel(result.recommendationScore)}</small>
                       </div>
                     )}
                   </div>
@@ -319,19 +397,23 @@ export default function App() {
                     <>
                       <div className="metrics-grid">
                         <div className="metric">
+                          <Clock size={17} />
                           <span>Trajet</span>
                           <strong>{formatMinutes(result.journey.durationMinutes)}</strong>
                         </div>
                         <div className="metric priority">
+                          <Footprints size={17} />
                           <span>Marche totale</span>
                           <strong>{formatMinutes(result.journey.walkingMinutes)}</strong>
                           <small>{formatDistance(result.journey.walkingMeters)}</small>
                         </div>
                         <div className="metric priority">
+                          <ArrowRightLeft size={17} />
                           <span>Correspondances</span>
                           <strong>{result.journey.transfers}</strong>
                         </div>
                         <div className="metric">
+                          <TrainFront size={17} />
                           <span>Transports pris</span>
                           <strong>{result.journey.transportCount}</strong>
                         </div>
@@ -339,14 +421,14 @@ export default function App() {
 
                       <div className="walk-details">
                         <div>
-                          <span>Départ → 1er transport</span>
+                          <span><Navigation size={15} /> Départ → 1er transport</span>
                           <strong>
                             {formatMinutes(result.journey.startWalkMinutes)} ·{' '}
                             {formatDistance(result.journey.startWalkMeters)}
                           </strong>
                         </div>
                         <div>
-                          <span>Dernier transport → adresse</span>
+                          <span><MapPin size={15} /> Dernier transport → adresse</span>
                           <strong>
                             {formatMinutes(result.journey.endWalkMinutes)} ·{' '}
                             {formatDistance(result.journey.endWalkMeters)}
@@ -356,13 +438,19 @@ export default function App() {
 
                       {result.journey.lines.length > 0 && (
                         <div className="journey-lines">
-                          <span>Itinéraire recommandé</span>
-                          <strong>{result.journey.lines.join(' → ')}</strong>
+                          <span><Route size={15} /> Itinéraire recommandé</span>
+                          <div className="line-flow">
+                            {result.journey.lines.map((line, lineIndex) => (
+                              <span className="line-pill" key={`${line}-${lineIndex}`}>
+                                {line}
+                              </span>
+                            ))}
+                          </div>
                         </div>
                       )}
 
                       <div className="meta-row">
-                        <span>Distance directe depuis le départ</span>
+                        <span><Navigation size={15} /> Distance directe depuis le départ</span>
                         <strong>{formatDistance(result.directDistanceMeters!)}</strong>
                       </div>
 
@@ -372,14 +460,14 @@ export default function App() {
                           target="_blank"
                           rel="noreferrer"
                         >
-                          Vérifier sur Google Maps
+                          Google Maps <ExternalLink size={14} />
                         </a>
                         <a
                           href={citymapperUrl(referenceAddress, result.address)}
                           target="_blank"
                           rel="noreferrer"
                         >
-                          Vérifier sur Citymapper
+                          Citymapper <ExternalLink size={14} />
                         </a>
                       </div>
                     </>
