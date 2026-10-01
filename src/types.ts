@@ -23,5 +23,7 @@ export interface RankedAddress {
   address: GeocodedAddress;
   stops: TransitStop[];
   nearestStop?: TransitStop;
+  totalAccessMeters?: number;
+  directDistanceMeters?: number;
   error?: string;
 }
