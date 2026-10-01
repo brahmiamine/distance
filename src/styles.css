@@ -348,7 +348,7 @@ legend{margin-bottom:11px;font-size:.9rem;font-weight:850}
   border-radius:14px;
   background:#eef3ff;
   color:#3158e8;
-  animation:float 3.4s ease-in-out infinite;
+  animation:iconFloat 3.4s ease-in-out infinite;
 }
 .reference-card h2{margin-bottom:5px;font-size:1.2rem;letter-spacing:-.02em}
 .reference-card p{margin:0;color:#778196;font-size:.86rem}
@@ -536,6 +536,10 @@ footer a{color:#3158e8;text-decoration:none;font-weight:750}
 @keyframes float{
   0%,100%{transform:translate(-50%,-50%) translateY(0)}
   50%{transform:translate(-50%,-50%) translateY(-7px)}
+}
+@keyframes iconFloat{
+  0%,100%{transform:translateY(0)}
+  50%{transform:translateY(-5px)}
 }
 @keyframes bob{
   0%,100%{transform:translateY(0) rotate(0)}

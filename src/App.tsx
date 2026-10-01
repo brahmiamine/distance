@@ -1,4 +1,4 @@
-import { FormEvent, useMemo, useState } from 'react';
+import { FormEvent, useEffect, useMemo, useState } from 'react';
 import {
   ArrowRightLeft,
   Bus,
@@ -100,6 +100,16 @@ export default function App() {
     [addressesText],
   );
 
+  // Persistance à chaque saisie : les champs survivent à un rafraîchissement
+  // de la page jusqu'au prochain classement (et au-delà, tant qu'on ne les vide pas).
+  useEffect(() => {
+    localStorage.setItem(REFERENCE_STORAGE_KEY, referenceText);
+  }, [referenceText]);
+
+  useEffect(() => {
+    localStorage.setItem(ADDRESSES_STORAGE_KEY, addressesText);
+  }, [addressesText]);
+
   const toggleType = (type: TransitType) => {
     setSelectedTypes((current) =>
       current.includes(type) ? current.filter((item) => item !== type) : [...current, type],
@@ -153,8 +163,6 @@ export default function App() {
       return;
     }
 
-    localStorage.setItem(REFERENCE_STORAGE_KEY, referenceText.trim());
-    localStorage.setItem(ADDRESSES_STORAGE_KEY, addressesText);
     setLoading(true);
 
     try {
@@ -182,10 +190,9 @@ export default function App() {
     setReferenceAddress(null);
     setResults([]);
     setGlobalError('');
+    setShowPaste(false);
     setPasteText('');
     setExtractStatus('');
-    localStorage.removeItem(REFERENCE_STORAGE_KEY);
-    localStorage.removeItem(ADDRESSES_STORAGE_KEY);
   };
 
   return (
