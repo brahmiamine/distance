@@ -62,6 +62,8 @@ curl -X POST https://<ton-worker>.workers.dev/api/rank \
   -d '{"origin":"10 avenue des Champs-Élysées, 75008 Paris","addresses":["56 avenue de l Agent Sarre, 92700 Colombes"]}'
 ```
 
+Une page dédiée, accessible depuis le lien en bas du comparateur (route `#/api`), permet de construire la requête, copier le curl et **tester l'appel en direct** avec affichage de la réponse JSON.
+
 La logique de classement est partagée entre l'interface et l'API dans `src/services/ranking.ts`.
 
 ## Développement

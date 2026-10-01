@@ -1,17 +1,15 @@
 import { FormEvent, useMemo, useState } from 'react';
 import {
+  ArrowRight,
   ArrowRightLeft,
   Bus,
   CableCar,
-  Check,
   Clock,
-  Copy,
   ExternalLink,
   Footprints,
   MapPin,
   Navigation,
   Route,
-  Send,
   Sparkles,
   Terminal,
   Train,
@@ -22,7 +20,7 @@ import { DEFAULT_TRANSIT_TYPES, MAX_ADDRESSES, rankAddresses } from './services/
 import type { GeocodedAddress, RankedAddress, TransitType } from './types';
 import './styles.css';
 
-const TYPE_LABELS: Record<TransitType, string> = {
+export const TYPE_LABELS: Record<TransitType, string> = {
   metro: 'Métro',
   rail: 'RER / Train',
   tram: 'Tram',
@@ -98,11 +96,6 @@ export default function App() {
   const [loading, setLoading] = useState(false);
   const [progress, setProgress] = useState('');
   const [globalError, setGlobalError] = useState('');
-  const [copied, setCopied] = useState(false);
-  const [apiTest, setApiTest] = useState<{
-    status: 'idle' | 'loading' | 'done' | 'error';
-    body: string;
-  }>({ status: 'idle', body: '' });
 
   const addresses = useMemo(
     () =>
@@ -173,56 +166,6 @@ export default function App() {
     setGlobalError('');
     localStorage.removeItem(REFERENCE_STORAGE_KEY);
     localStorage.removeItem(ADDRESSES_STORAGE_KEY);
-  };
-
-  const apiUrl = `${window.location.origin}/api/rank`;
-
-  const apiPayload = useMemo(
-    () => ({
-      origin: referenceText.trim() || '10 avenue des Champs-Élysées, 75008 Paris',
-      addresses: addresses.length ? addresses : ["56 avenue de l'Agent Sarre, 92700 Colombes"],
-      types: selectedTypes,
-    }),
-    [referenceText, addresses, selectedTypes],
-  );
-
-  const curlCommand = useMemo(() => {
-    const shellJson = JSON.stringify(apiPayload, null, 2).replace(/'/g, `'\\''`);
-    return `curl -X POST '${apiUrl}' \\\n  -H 'content-type: application/json' \\\n  -d '${shellJson}'`;
-  }, [apiPayload, apiUrl]);
-
-  const copyCurl = async () => {
-    try {
-      await navigator.clipboard.writeText(curlCommand);
-      setCopied(true);
-      window.setTimeout(() => setCopied(false), 2000);
-    } catch {
-      setCopied(false);
-    }
-  };
-
-  const testApi = async () => {
-    setApiTest({ status: 'loading', body: '' });
-    try {
-      const response = await fetch(apiUrl, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify(apiPayload),
-      });
-      const text = await response.text();
-      let body = text;
-      try {
-        body = JSON.stringify(JSON.parse(text), null, 2);
-      } catch {
-        // Réponse non JSON : on affiche le texte brut.
-      }
-      setApiTest({ status: response.ok ? 'done' : 'error', body });
-    } catch (error) {
-      setApiTest({
-        status: 'error',
-        body: error instanceof Error ? error.message : 'Erreur inconnue',
-      });
-    }
   };
 
   return (
@@ -499,73 +442,22 @@ export default function App() {
         </section>
       )}
 
-      <section className="panel api-panel animated-panel">
-        <div className="api-head">
+      <section className="panel api-cta animated-panel">
+        <div>
           <span className="eyebrow">
             <Terminal size={14} />
             API publique
           </span>
           <h2>Réutilisez le classement depuis vos propres outils</h2>
           <p>
-            Le même moteur est exposé en HTTP. Envoyez une adresse de départ et une liste
-            d’adresses, récupérez le classement dans l’ordre. Pratique pour un script, un tableur
-            ou une autre application.
+            Envoyez une adresse de départ et une liste d’adresses, récupérez le classement en JSON.
+            Documentation et test en direct sur la page dédiée.
           </p>
         </div>
-
-        <div className="api-endpoint">
-          <span className="api-method">POST</span>
-          <code>{apiUrl}</code>
-          <button type="button" className="text-button api-copy" onClick={copyCurl}>
-            {copied ? <Check size={15} /> : <Copy size={15} />}
-            {copied ? 'Copié' : 'Copier le curl'}
-          </button>
-        </div>
-
-        <div className="api-fields">
-          <div>
-            <code>origin</code>
-            <span>Adresse de départ · requis</span>
-          </div>
-          <div>
-            <code>addresses</code>
-            <span>1 à 20 adresses · requis</span>
-          </div>
-          <div>
-            <code>types</code>
-            <span>metro, rail, tram, bus, cableway · optionnel</span>
-          </div>
-        </div>
-
-        <pre className="api-code"><code>{curlCommand}</code></pre>
-
-        <div className="api-actions">
-          <button
-            type="button"
-            className="api-test-button"
-            onClick={testApi}
-            disabled={apiTest.status === 'loading'}
-          >
-            {apiTest.status === 'loading' ? <span className="spinner" /> : <Send size={16} />}
-            {apiTest.status === 'loading' ? 'Appel en cours…' : 'Tester l’API maintenant'}
-          </button>
-          <span className="api-hint">
-            Exécute la requête ci-dessus (avec l’adresse de départ et les destinations saisies plus
-            haut) directement depuis cette page.
-          </span>
-        </div>
-
-        {apiTest.status !== 'idle' && apiTest.body && (
-          <pre
-            className={
-              apiTest.status === 'error'
-                ? 'api-code api-response error'
-                : 'api-code api-response'
-            }
-          >
-            <code>{apiTest.body}</code>
-          </pre>
-        )}
+        <a className="api-cta-button" href="#/api">
+          Ouvrir l’API &amp; le test JSON
+          <ArrowRight size={16} />
+        </a>
       </section>
 
       <footer>
