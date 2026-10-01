@@ -3,19 +3,22 @@ import {
   ArrowRightLeft,
   Bus,
   CableCar,
+  Check,
   Clock,
+  Copy,
   ExternalLink,
   Footprints,
   MapPin,
   Navigation,
   Route,
+  Send,
   Sparkles,
+  Terminal,
   Train,
   TrainFront,
   Trophy,
 } from 'lucide-react';
-import { geocodeAddress } from './services/geocoding';
-import { findRecommendedJourney } from './services/transitous';
+import { DEFAULT_TRANSIT_TYPES, MAX_ADDRESSES, rankAddresses } from './services/ranking';
 import type { GeocodedAddress, RankedAddress, TransitType } from './types';
 import './styles.css';
 
@@ -27,7 +30,6 @@ const TYPE_LABELS: Record<TransitType, string> = {
   cableway: 'Téléphérique',
 };
 
-const DEFAULT_TYPES: TransitType[] = ['metro', 'rail', 'tram', 'bus'];
 const REFERENCE_STORAGE_KEY = 'distance-transports-reference';
 const ADDRESSES_STORAGE_KEY = 'distance-transports-addresses';
 
@@ -54,17 +56,6 @@ function formatDistance(value: number): string {
 
 function formatMinutes(value: number): string {
   return `${Math.max(0, Math.round(value))} min`;
-}
-
-function haversineDistanceMeters(a: GeocodedAddress, b: GeocodedAddress): number {
-  const toRadians = (value: number) => (value * Math.PI) / 180;
-  const radius = 6_371_000;
-  const dLat = toRadians(b.lat - a.lat);
-  const dLon = toRadians(b.lon - a.lon);
-  const x =
-    Math.sin(dLat / 2) ** 2 +
-    Math.cos(toRadians(a.lat)) * Math.cos(toRadians(b.lat)) * Math.sin(dLon / 2) ** 2;
-  return 2 * radius * Math.atan2(Math.sqrt(x), Math.sqrt(1 - x));
 }
 
 function googleMapsUrl(origin: GeocodedAddress, destination: GeocodedAddress): string {
@@ -101,12 +92,17 @@ export default function App() {
   const [addressesText, setAddressesText] = useState(
     () => localStorage.getItem(ADDRESSES_STORAGE_KEY) ?? '',
   );
-  const [selectedTypes, setSelectedTypes] = useState<TransitType[]>(DEFAULT_TYPES);
+  const [selectedTypes, setSelectedTypes] = useState<TransitType[]>(DEFAULT_TRANSIT_TYPES);
   const [referenceAddress, setReferenceAddress] = useState<GeocodedAddress | null>(null);
   const [results, setResults] = useState<RankedAddress[]>([]);
   const [loading, setLoading] = useState(false);
   const [progress, setProgress] = useState('');
   const [globalError, setGlobalError] = useState('');
+  const [copied, setCopied] = useState(false);
+  const [apiTest, setApiTest] = useState<{
+    status: 'idle' | 'loading' | 'done' | 'error';
+    body: string;
+  }>({ status: 'idle', body: '' });
 
   const addresses = useMemo(
     () =>
@@ -138,8 +134,8 @@ export default function App() {
       setGlobalError('Ajoutez au moins une adresse à comparer.');
       return;
     }
-    if (addresses.length > 20) {
-      setGlobalError('La V1 accepte au maximum 20 adresses à la fois.');
+    if (addresses.length > MAX_ADDRESSES) {
+      setGlobalError(`La V1 accepte au maximum ${MAX_ADDRESSES} adresses à la fois.`);
       return;
     }
     if (selectedTypes.length === 0) {
@@ -152,46 +148,15 @@ export default function App() {
     setLoading(true);
 
     try {
-      setProgress('Géocodage de l’adresse de départ…');
-      const origin = await geocodeAddress(referenceText.trim());
-      setReferenceAddress(origin);
-
-      const collected: RankedAddress[] = [];
-
-      for (let index = 0; index < addresses.length; index += 1) {
-        const input = addresses[index];
-        setProgress(`Itinéraire ${index + 1}/${addresses.length} — ${input}`);
-
-        try {
-          const destination = await geocodeAddress(input);
-          const directDistanceMeters = haversineDistanceMeters(origin, destination);
-          const journey = await findRecommendedJourney(origin, destination, selectedTypes);
-
-          const distancePenalty = (directDistanceMeters / 1000) * 0.35;
-          const rankingCost = journey.preferenceCost + distancePenalty;
-          const recommendationScore = Math.max(1, Math.round(100 - rankingCost * 0.72));
-
-          collected.push({
-            address: destination,
-            directDistanceMeters,
-            journey,
-            recommendationScore,
-          });
-        } catch (error) {
-          collected.push({
-            address: { input, label: input, lat: 0, lon: 0 },
-            error: error instanceof Error ? error.message : 'Erreur inconnue',
-          });
-        }
-      }
-
-      collected.sort((a, b) => {
-        if (a.recommendationScore == null) return 1;
-        if (b.recommendationScore == null) return -1;
-        return b.recommendationScore - a.recommendationScore;
+      const { origin, ranking } = await rankAddresses({
+        origin: referenceText.trim(),
+        addresses,
+        types: selectedTypes,
+        onProgress: setProgress,
       });
 
-      setResults(collected);
+      setReferenceAddress(origin);
+      setResults(ranking);
     } catch (error) {
       setGlobalError(error instanceof Error ? error.message : 'Erreur inconnue');
     } finally {
@@ -208,6 +173,56 @@ export default function App() {
     setGlobalError('');
     localStorage.removeItem(REFERENCE_STORAGE_KEY);
     localStorage.removeItem(ADDRESSES_STORAGE_KEY);
+  };
+
+  const apiUrl = `${window.location.origin}/api/rank`;
+
+  const apiPayload = useMemo(
+    () => ({
+      origin: referenceText.trim() || '10 avenue des Champs-Élysées, 75008 Paris',
+      addresses: addresses.length ? addresses : ["56 avenue de l'Agent Sarre, 92700 Colombes"],
+      types: selectedTypes,
+    }),
+    [referenceText, addresses, selectedTypes],
+  );
+
+  const curlCommand = useMemo(() => {
+    const shellJson = JSON.stringify(apiPayload, null, 2).replace(/'/g, `'\\''`);
+    return `curl -X POST '${apiUrl}' \\\n  -H 'content-type: application/json' \\\n  -d '${shellJson}'`;
+  }, [apiPayload, apiUrl]);
+
+  const copyCurl = async () => {
+    try {
+      await navigator.clipboard.writeText(curlCommand);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 2000);
+    } catch {
+      setCopied(false);
+    }
+  };
+
+  const testApi = async () => {
+    setApiTest({ status: 'loading', body: '' });
+    try {
+      const response = await fetch(apiUrl, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(apiPayload),
+      });
+      const text = await response.text();
+      let body = text;
+      try {
+        body = JSON.stringify(JSON.parse(text), null, 2);
+      } catch {
+        // Réponse non JSON : on affiche le texte brut.
+      }
+      setApiTest({ status: response.ok ? 'done' : 'error', body });
+    } catch (error) {
+      setApiTest({
+        status: 'error',
+        body: error instanceof Error ? error.message : 'Erreur inconnue',
+      });
+    }
   };
 
   return (
@@ -483,6 +498,75 @@ export default function App() {
           </p>
         </section>
       )}
+
+      <section className="panel api-panel animated-panel">
+        <div className="api-head">
+          <span className="eyebrow">
+            <Terminal size={14} />
+            API publique
+          </span>
+          <h2>Réutilisez le classement depuis vos propres outils</h2>
+          <p>
+            Le même moteur est exposé en HTTP. Envoyez une adresse de départ et une liste
+            d’adresses, récupérez le classement dans l’ordre. Pratique pour un script, un tableur
+            ou une autre application.
+          </p>
+        </div>
+
+        <div className="api-endpoint">
+          <span className="api-method">POST</span>
+          <code>{apiUrl}</code>
+          <button type="button" className="text-button api-copy" onClick={copyCurl}>
+            {copied ? <Check size={15} /> : <Copy size={15} />}
+            {copied ? 'Copié' : 'Copier le curl'}
+          </button>
+        </div>
+
+        <div className="api-fields">
+          <div>
+            <code>origin</code>
+            <span>Adresse de départ · requis</span>
+          </div>
+          <div>
+            <code>addresses</code>
+            <span>1 à 20 adresses · requis</span>
+          </div>
+          <div>
+            <code>types</code>
+            <span>metro, rail, tram, bus, cableway · optionnel</span>
+          </div>
+        </div>
+
+        <pre className="api-code"><code>{curlCommand}</code></pre>
+
+        <div className="api-actions">
+          <button
+            type="button"
+            className="api-test-button"
+            onClick={testApi}
+            disabled={apiTest.status === 'loading'}
+          >
+            {apiTest.status === 'loading' ? <span className="spinner" /> : <Send size={16} />}
+            {apiTest.status === 'loading' ? 'Appel en cours…' : 'Tester l’API maintenant'}
+          </button>
+          <span className="api-hint">
+            Exécute la requête ci-dessus (avec l’adresse de départ et les destinations saisies plus
+            haut) directement depuis cette page.
+          </span>
+        </div>
+
+        {apiTest.status !== 'idle' && apiTest.body && (
+          <pre
+            className={
+              apiTest.status === 'error'
+                ? 'api-code api-response error'
+                : 'api-code api-response'
+            }
+          >
+            <code>{apiTest.body}</code>
+          </pre>
+        )}
+      </section>
 
       <footer>
         Géocodage : BAN / IGN · Routage transport :{' '}

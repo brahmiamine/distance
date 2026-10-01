@@ -5,8 +5,11 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "dev:worker": "wrangler dev",
     "build": "tsc --noEmit && vite build",
-    "preview": "vite preview"
+    "build:pages": "tsc --noEmit && vite build --mode pages",
+    "preview": "vite preview",
+    "deploy": "npm run build && wrangler deploy"
   },
   "dependencies": {
     "@vitejs/plugin-react": "^5.0.0",
@@ -18,5 +21,7 @@
     "@types/react-dom": "^19.1.0",
     "lucide-react": "^0.468.0"
   },
-  "devDependencies": {}
+  "devDependencies": {
+    "wrangler": "^4.146.0"
+  }
 }
