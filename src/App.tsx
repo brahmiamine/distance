@@ -1,6 +1,6 @@
 import { FormEvent, useMemo, useState } from 'react';
 import { geocodeAddress } from './services/geocoding';
-import { findNearestStops } from './services/idfm';
+import { findRecommendedJourney } from './services/transitous';
 import type { GeocodedAddress, RankedAddress, TransitType } from './types';
 import './styles.css';
 
@@ -20,7 +20,7 @@ const TYPE_ICONS: Record<TransitType, string> = {
   cableway: 'C',
 };
 
-const DEFAULT_TYPES: TransitType[] = ['metro', 'rail', 'tram'];
+const DEFAULT_TYPES: TransitType[] = ['metro', 'rail', 'tram', 'bus'];
 const REFERENCE_STORAGE_KEY = 'distance-transports-reference';
 const ADDRESSES_STORAGE_KEY = 'distance-transports-addresses';
 
@@ -37,8 +37,8 @@ function formatDistance(value: number): string {
   return `${(value / 1000).toFixed(1)} km`;
 }
 
-function walkingMinutes(value: number): number {
-  return Math.max(1, Math.round(value / 80));
+function formatMinutes(value: number): string {
+  return `${Math.max(0, Math.round(value))} min`;
 }
 
 function haversineDistanceMeters(a: GeocodedAddress, b: GeocodedAddress): number {
@@ -72,6 +72,13 @@ function citymapperUrl(origin: GeocodedAddress, destination: GeocodedAddress): s
   return `https://citymapper.com/directions?${params.toString()}`;
 }
 
+function recommendationLabel(score: number): string {
+  if (score >= 80) return 'Excellent';
+  if (score >= 65) return 'Très bon';
+  if (score >= 50) return 'Bon';
+  return 'Correct';
+}
+
 export default function App() {
   const [referenceText, setReferenceText] = useState(
     () => localStorage.getItem(REFERENCE_STORAGE_KEY) ?? '',
@@ -80,7 +87,7 @@ export default function App() {
     () => localStorage.getItem(ADDRESSES_STORAGE_KEY) ?? '',
   );
   const [selectedTypes, setSelectedTypes] = useState<TransitType[]>(DEFAULT_TYPES);
-  const [referenceAnalysis, setReferenceAnalysis] = useState<RankedAddress | null>(null);
+  const [referenceAddress, setReferenceAddress] = useState<GeocodedAddress | null>(null);
   const [results, setResults] = useState<RankedAddress[]>([]);
   const [loading, setLoading] = useState(false);
   const [progress, setProgress] = useState('');
@@ -106,10 +113,10 @@ export default function App() {
     event.preventDefault();
     setGlobalError('');
     setResults([]);
-    setReferenceAnalysis(null);
+    setReferenceAddress(null);
 
     if (!referenceText.trim()) {
-      setGlobalError('Renseignez une adresse de référence.');
+      setGlobalError('Renseignez une adresse de départ.');
       return;
     }
     if (addresses.length < 1) {
@@ -130,56 +137,43 @@ export default function App() {
     setLoading(true);
 
     try {
-      setProgress('Analyse de l’adresse de référence…');
-      const referenceAddress = await geocodeAddress(referenceText.trim());
-      const referenceStops = await findNearestStops(referenceAddress, selectedTypes);
-      const referenceNearestStop = referenceStops[0];
-
-      if (!referenceNearestStop) {
-        throw new Error('Aucune station correspondant aux filtres trouvée près de l’adresse de référence.');
-      }
-
-      const reference: RankedAddress = {
-        address: referenceAddress,
-        stops: referenceStops,
-        nearestStop: referenceNearestStop,
-      };
-      setReferenceAnalysis(reference);
+      setProgress('Géocodage de l’adresse de départ…');
+      const origin = await geocodeAddress(referenceText.trim());
+      setReferenceAddress(origin);
 
       const collected: RankedAddress[] = [];
 
       for (let index = 0; index < addresses.length; index += 1) {
         const input = addresses[index];
-        setProgress(`Analyse ${index + 1}/${addresses.length} — ${input}`);
+        setProgress(`Itinéraire ${index + 1}/${addresses.length} — ${input}`);
 
         try {
-          const address = await geocodeAddress(input);
-          const stops = await findNearestStops(address, selectedTypes);
-          const nearestStop = stops[0];
+          const destination = await geocodeAddress(input);
+          const directDistanceMeters = haversineDistanceMeters(origin, destination);
+          const journey = await findRecommendedJourney(origin, destination, selectedTypes);
+
+          const distancePenalty = (directDistanceMeters / 1000) * 0.35;
+          const rankingCost = journey.preferenceCost + distancePenalty;
+          const recommendationScore = Math.max(1, Math.round(100 - rankingCost * 0.72));
 
           collected.push({
-            address,
-            stops,
-            nearestStop,
-            totalAccessMeters: nearestStop
-              ? referenceNearestStop.distanceMeters + nearestStop.distanceMeters
-              : undefined,
-            directDistanceMeters: haversineDistanceMeters(referenceAddress, address),
-            error: stops.length === 0 ? 'Aucun arrêt trouvé dans un rayon de 10 km.' : undefined,
+            address: destination,
+            directDistanceMeters,
+            journey,
+            recommendationScore,
           });
         } catch (error) {
           collected.push({
             address: { input, label: input, lat: 0, lon: 0 },
-            stops: [],
             error: error instanceof Error ? error.message : 'Erreur inconnue',
           });
         }
       }
 
       collected.sort((a, b) => {
-        if (a.totalAccessMeters == null) return 1;
-        if (b.totalAccessMeters == null) return -1;
-        return a.totalAccessMeters - b.totalAccessMeters;
+        if (a.recommendationScore == null) return 1;
+        if (b.recommendationScore == null) return -1;
+        return b.recommendationScore - a.recommendationScore;
       });
 
       setResults(collected);
@@ -194,7 +188,7 @@ export default function App() {
   const clearAll = () => {
     setReferenceText('');
     setAddressesText('');
-    setReferenceAnalysis(null);
+    setReferenceAddress(null);
     setResults([]);
     setGlobalError('');
     localStorage.removeItem(REFERENCE_STORAGE_KEY);
@@ -204,11 +198,12 @@ export default function App() {
   return (
     <main className="page-shell">
       <section className="hero">
-        <div className="eyebrow">Île-de-France · données IDFM</div>
-        <h1>Comparer des adresses par leur accès aux transports</h1>
+        <div className="eyebrow">Comparateur transport · Île-de-France</div>
+        <h1>Quelle adresse est la plus pratique depuis votre point de départ ?</h1>
         <p>
-          Indiquez une adresse de référence, puis une liste d’adresses. L’application compare
-          l’accès aux stations aux deux extrémités et classe les adresses les mieux desservies.
+          L’adresse de référence est toujours le départ. Les destinations sont classées par
+          recommandation en privilégiant peu de marche, peu de correspondances, peu de transports
+          à prendre et un trajet global raisonnable.
         </p>
       </section>
 
@@ -216,8 +211,8 @@ export default function App() {
         <form onSubmit={compare}>
           <div className="field-heading">
             <div>
-              <label htmlFor="reference">Adresse de référence</label>
-              <span>Votre domicile, travail ou lieu de destination principal</span>
+              <label htmlFor="reference">Adresse de départ</label>
+              <span>Adresse de référence utilisée comme origine pour tous les trajets</span>
             </div>
             <button type="button" className="text-button" onClick={clearAll}>
               Effacer
@@ -235,8 +230,8 @@ export default function App() {
 
           <div className="field-heading list-heading">
             <div>
-              <label htmlFor="addresses">Liste des adresses à comparer</label>
-              <span>Une adresse par ligne · 1 à 20 adresses</span>
+              <label htmlFor="addresses">Adresses de destination</label>
+              <span>Une adresse par ligne · 1 à 20 destinations</span>
             </div>
           </div>
 
@@ -249,7 +244,7 @@ export default function App() {
           />
 
           <fieldset>
-            <legend>Transports pris en compte</legend>
+            <legend>Transports autorisés</legend>
             <div className="transport-options">
               {(Object.keys(TYPE_LABELS) as TransitType[]).map((type) => (
                 <label key={type} className={selectedTypes.includes(type) ? 'chip active' : 'chip'}>
@@ -265,108 +260,126 @@ export default function App() {
             </div>
           </fieldset>
 
+          <div className="criteria-box">
+            <strong>Priorités du classement</strong>
+            <span>1. Peu de marche</span>
+            <span>2. Peu de correspondances / transports</span>
+            <span>3. Temps de trajet raisonnable</span>
+            <span>4. Distance globale plus courte</span>
+          </div>
+
           {globalError && <div className="alert error">{globalError}</div>}
 
           <button className="primary-button" type="submit" disabled={loading}>
             {loading
-              ? 'Analyse en cours…'
-              : `Comparer ${addresses.length || ''} adresse${addresses.length > 1 ? 's' : ''}`}
+              ? 'Calcul des itinéraires…'
+              : `Classer ${addresses.length || ''} destination${addresses.length > 1 ? 's' : ''}`}
           </button>
           {progress && <p className="progress">{progress}</p>}
         </form>
       </section>
 
-      {referenceAnalysis?.nearestStop && results.length > 0 && (
+      {referenceAddress && results.length > 0 && (
         <section className="results-section">
           <div className="reference-card">
-            <span className="eyebrow">Adresse de référence</span>
-            <h2>{referenceAnalysis.address.label}</h2>
-            <div className="reference-stop">
-              <span className={`mode-icon mode-${referenceAnalysis.nearestStop.type}`}>
-                {TYPE_ICONS[referenceAnalysis.nearestStop.type]}
-              </span>
-              <div>
-                <strong>{referenceAnalysis.nearestStop.name}</strong>
-                <span>
-                  {TYPE_LABELS[referenceAnalysis.nearestStop.type]} ·{' '}
-                  {formatDistance(referenceAnalysis.nearestStop.distanceMeters)} ≈{' '}
-                  {walkingMinutes(referenceAnalysis.nearestStop.distanceMeters)} min à pied*
-                </span>
-              </div>
-            </div>
+            <span className="eyebrow">Départ unique</span>
+            <h2>{referenceAddress.label}</h2>
+            <p>Tous les itinéraires ci-dessous partent de cette adresse.</p>
           </div>
 
           <div className="results-heading">
             <div>
-              <span className="eyebrow">Classement</span>
-              <h2>Meilleur accès transport vers la référence</h2>
+              <span className="eyebrow">Recommandations</span>
+              <h2>Meilleures adresses pour les transports</h2>
             </div>
-            <span className="method-note">Somme des accès aux stations aux deux extrémités</span>
+            <span className="method-note">Le rang #1 correspond au meilleur compromis</span>
           </div>
 
           <div className="results-list">
             {results.map((result, index) => (
-              <article className="result-card" key={`${result.address.input}-${index}`}>
+              <article
+                className={index === 0 ? 'result-card top-result' : 'result-card'}
+                key={`${result.address.input}-${index}`}
+              >
                 <div className="rank">#{index + 1}</div>
                 <div className="result-main">
-                  <h3>{result.address.label}</h3>
-                  {result.error || !result.nearestStop ? (
-                    <div className="alert error compact">{result.error ?? 'Station introuvable'}</div>
+                  <div className="result-title-row">
+                    <h3>{result.address.label}</h3>
+                    {result.recommendationScore != null && (
+                      <div className="recommendation-badge">
+                        <strong>{result.recommendationScore}/100</strong>
+                        <span>{recommendationLabel(result.recommendationScore)}</span>
+                      </div>
+                    )}
+                  </div>
+
+                  {result.error || !result.journey ? (
+                    <div className="alert error compact">{result.error ?? 'Itinéraire introuvable'}</div>
                   ) : (
                     <>
-                      <div className="score-line">
-                        <span>Accès transport total*</span>
-                        <strong>{formatDistance(result.totalAccessMeters!)}</strong>
+                      <div className="metrics-grid">
+                        <div className="metric">
+                          <span>Trajet</span>
+                          <strong>{formatMinutes(result.journey.durationMinutes)}</strong>
+                        </div>
+                        <div className="metric priority">
+                          <span>Marche totale</span>
+                          <strong>{formatMinutes(result.journey.walkingMinutes)}</strong>
+                          <small>{formatDistance(result.journey.walkingMeters)}</small>
+                        </div>
+                        <div className="metric priority">
+                          <span>Correspondances</span>
+                          <strong>{result.journey.transfers}</strong>
+                        </div>
+                        <div className="metric">
+                          <span>Transports pris</span>
+                          <strong>{result.journey.transportCount}</strong>
+                        </div>
                       </div>
 
-                      <div className="nearest-line">
-                        <span className={`mode-icon mode-${result.nearestStop.type}`}>
-                          {TYPE_ICONS[result.nearestStop.type]}
-                        </span>
+                      <div className="walk-details">
                         <div>
-                          <strong>{result.nearestStop.name}</strong>
-                          <span>
-                            {TYPE_LABELS[result.nearestStop.type]}
-                            {result.nearestStop.town ? ` · ${result.nearestStop.town}` : ''}
-                          </span>
+                          <span>Départ → 1er transport</span>
+                          <strong>
+                            {formatMinutes(result.journey.startWalkMinutes)} ·{' '}
+                            {formatDistance(result.journey.startWalkMeters)}
+                          </strong>
                         </div>
-                        <div className="distance-box">
-                          <strong>{formatDistance(result.nearestStop.distanceMeters)}</strong>
-                          <span>≈ {walkingMinutes(result.nearestStop.distanceMeters)} min à pied*</span>
+                        <div>
+                          <span>Dernier transport → adresse</span>
+                          <strong>
+                            {formatMinutes(result.journey.endWalkMinutes)} ·{' '}
+                            {formatDistance(result.journey.endWalkMeters)}
+                          </strong>
                         </div>
                       </div>
+
+                      {result.journey.lines.length > 0 && (
+                        <div className="journey-lines">
+                          <span>Itinéraire recommandé</span>
+                          <strong>{result.journey.lines.join(' → ')}</strong>
+                        </div>
+                      )}
 
                       <div className="meta-row">
-                        <span>Distance directe jusqu’à la référence</span>
+                        <span>Distance directe depuis le départ</span>
                         <strong>{formatDistance(result.directDistanceMeters!)}</strong>
-                      </div>
-
-                      <div className="other-stops">
-                        {result.stops.slice(1, 4).map((stop) => (
-                          <div className="stop-row" key={stop.id}>
-                            <span className={`mode-icon small mode-${stop.type}`}>
-                              {TYPE_ICONS[stop.type]}
-                            </span>
-                            <span>{stop.name}</span>
-                            <span>{formatDistance(stop.distanceMeters)}</span>
-                          </div>
-                        ))}
                       </div>
 
                       <div className="actions">
                         <a
-                          href={googleMapsUrl(result.address, referenceAnalysis.address)}
+                          href={googleMapsUrl(referenceAddress, result.address)}
                           target="_blank"
                           rel="noreferrer"
                         >
-                          Trajet Google Maps
+                          Vérifier sur Google Maps
                         </a>
                         <a
-                          href={citymapperUrl(result.address, referenceAnalysis.address)}
+                          href={citymapperUrl(referenceAddress, result.address)}
                           target="_blank"
                           rel="noreferrer"
                         >
-                          Trajet Citymapper
+                          Vérifier sur Citymapper
                         </a>
                       </div>
                     </>
@@ -377,13 +390,20 @@ export default function App() {
           </div>
 
           <p className="footnote">
-            * La V1 classe selon la proximité des stations aux deux extrémités. Le temps de marche est
-            indicatif. Les boutons Google Maps et Citymapper ouvrent le vrai trajet en transports en commun.
+            Le calcul utilise les itinéraires disponibles au moment de la recherche. Le score donne
+            davantage de poids à la marche et aux correspondances qu’à la distance pure.
           </p>
         </section>
       )}
 
-      <footer>Géocodage : BAN / IGN · Arrêts : Open Data Île-de-France Mobilités</footer>
+      <footer>
+        Géocodage : BAN / IGN · Routage transport :{' '}
+        <a href="https://transitous.org/" target="_blank" rel="noreferrer">Transitous / MOTIS</a>
+        {' '}· Données cartographiques : OpenStreetMap ·{' '}
+        <a href="https://github.com/brahmiamine/distance" target="_blank" rel="noreferrer">
+          code source / contact
+        </a>
+      </footer>
     </main>
   );
 }
