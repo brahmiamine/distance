@@ -1,9 +1,0 @@
-name = "distance"
-main = "worker/index.ts"
-compatibility_date = "2026-10-01"
-
-# Le Worker sert à la fois l'API `/api/rank` et le front React compilé (./dist).
-[assets]
-directory = "./dist"
-binding = "ASSETS"
-not_found_handling = "single-page-application"

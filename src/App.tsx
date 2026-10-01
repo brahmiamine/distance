@@ -1,6 +1,5 @@
 import { FormEvent, useMemo, useState } from 'react';
 import {
-  ArrowRight,
   ArrowRightLeft,
   Bus,
   CableCar,
@@ -11,16 +10,18 @@ import {
   Navigation,
   Route,
   Sparkles,
-  Terminal,
   Train,
   TrainFront,
   Trophy,
 } from 'lucide-react';
+import { browserCache } from './services/cache';
 import { DEFAULT_TRANSIT_TYPES, MAX_ADDRESSES, rankAddresses } from './services/ranking';
 import type { GeocodedAddress, RankedAddress, TransitType } from './types';
 import './styles.css';
 
-export const TYPE_LABELS: Record<TransitType, string> = {
+const APP_CACHE = browserCache();
+
+const TYPE_LABELS: Record<TransitType, string> = {
   metro: 'Métro',
   rail: 'RER / Train',
   tram: 'Tram',
@@ -56,31 +57,17 @@ function formatMinutes(value: number): string {
   return `${Math.max(0, Math.round(value))} min`;
 }
 
-function googleMapsUrl(origin: GeocodedAddress, destination: GeocodedAddress): string {
-  const params = new URLSearchParams({
-    api: '1',
-    origin: origin.label,
-    destination: destination.label,
-    travelmode: 'transit',
-  });
-  return `https://www.google.com/maps/dir/?${params.toString()}`;
+function percentileLabel(percentile: number | undefined): string {
+  if (percentile == null) return 'Adresse unique';
+  if (percentile >= 100) return 'Meilleur du lot';
+  return `Mieux classé que ${percentile} % du lot`;
 }
 
-function citymapperUrl(origin: GeocodedAddress, destination: GeocodedAddress): string {
-  const params = new URLSearchParams({
-    startcoord: `${origin.lat},${origin.lon}`,
-    startname: origin.label,
-    endcoord: `${destination.lat},${destination.lon}`,
-    endname: destination.label,
-  });
-  return `https://citymapper.com/directions?${params.toString()}`;
-}
-
-function recommendationLabel(score: number): string {
-  if (score >= 80) return 'Excellent';
-  if (score >= 65) return 'Très bon';
-  if (score >= 50) return 'Bon';
-  return 'Correct';
+function confidenceLabel(confidence: GeocodedAddress['confidence']): string {
+  if (confidence === 'high') return 'Adresse bien reconnue';
+  if (confidence === 'medium') return 'Adresse reconnue (vérifiez)';
+  if (confidence === 'low') return 'Adresse incertaine (à vérifier)';
+  return '';
 }
 
 export default function App() {
@@ -146,6 +133,7 @@ export default function App() {
         addresses,
         types: selectedTypes,
         onProgress: setProgress,
+        context: { cache: APP_CACHE, concurrency: 4 },
       });
 
       setReferenceAddress(origin);
@@ -301,6 +289,9 @@ export default function App() {
               <span className="eyebrow">Départ unique</span>
               <h2>{referenceAddress.label}</h2>
               <p>Tous les itinéraires ci-dessous partent de cette adresse.</p>
+              {referenceAddress.confidence && referenceAddress.confidence !== 'high' && (
+                <p className="confidence-note">{confidenceLabel(referenceAddress.confidence)}</p>
+              )}
             </div>
           </div>
 
@@ -312,7 +303,7 @@ export default function App() {
               </span>
               <h2>Meilleures adresses pour les transports</h2>
             </div>
-            <span className="method-note">Le rang #1 correspond au meilleur compromis</span>
+            <span className="method-note">Les rangs ex æquo partagent la même position</span>
           </div>
 
           <div className="results-list">
@@ -323,7 +314,7 @@ export default function App() {
                 style={{ animationDelay: `${index * 90}ms` }}
               >
                 <div className={index === 0 ? 'rank rank-first' : 'rank'}>
-                  {index === 0 ? <Trophy size={20} /> : `#${index + 1}`}
+                  {index === 0 ? <Trophy size={20} /> : `#${result.rank ?? index + 1}`}
                 </div>
                 <div className="result-main">
                   <div className="result-title-row">
@@ -331,23 +322,22 @@ export default function App() {
                       <MapPin size={17} />
                       <h3>{result.address.label}</h3>
                     </div>
-                    {result.recommendationScore != null && (
-                      <div className="recommendation-score">
-                        <div
-                          className="score-ring"
-                          style={{
-                            background: `conic-gradient(#3158e8 ${result.recommendationScore * 3.6}deg, #e6eaf3 0deg)`,
-                          }}
-                        >
-                          <div>
-                            <strong>{result.recommendationScore}</strong>
-                            <span>/100</span>
-                          </div>
-                        </div>
-                        <small>{recommendationLabel(result.recommendationScore)}</small>
-                      </div>
-                    )}
+                    <div className="result-flags">
+                      {result.tied && <span className="flag tie">ex æquo</span>}
+                      {result.journey?.kind === 'walk' && (
+                        <span className="flag walk"><Footprints size={13} /> à pied</span>
+                      )}
+                    </div>
                   </div>
+
+                  {result.percentile != null && (
+                    <div className="relative-score">
+                      <div className="relative-bar">
+                        <span style={{ width: `${result.percentile}%` }} />
+                      </div>
+                      <small>{percentileLabel(result.percentile)}</small>
+                    </div>
+                  )}
 
                   {result.error || !result.journey ? (
                     <div className="alert error compact">{result.error ?? 'Itinéraire introuvable'}</div>
@@ -377,22 +367,34 @@ export default function App() {
                         </div>
                       </div>
 
-                      <div className="walk-details">
-                        <div>
-                          <span><Navigation size={15} /> Départ → 1er transport</span>
-                          <strong>
-                            {formatMinutes(result.journey.startWalkMinutes)} ·{' '}
-                            {formatDistance(result.journey.startWalkMeters)}
-                          </strong>
+                      {result.journey.kind === 'walk' ? (
+                        <div className="walk-details">
+                          <div>
+                            <span><Footprints size={15} /> Aucun transport : trajet à pied</span>
+                            <strong>
+                              {formatMinutes(result.journey.walkingMinutes)} ·{' '}
+                              {formatDistance(result.journey.walkingMeters)}
+                            </strong>
+                          </div>
                         </div>
-                        <div>
-                          <span><MapPin size={15} /> Dernier transport → adresse</span>
-                          <strong>
-                            {formatMinutes(result.journey.endWalkMinutes)} ·{' '}
-                            {formatDistance(result.journey.endWalkMeters)}
-                          </strong>
+                      ) : (
+                        <div className="walk-details">
+                          <div>
+                            <span><Navigation size={15} /> Départ → 1er transport</span>
+                            <strong>
+                              {formatMinutes(result.journey.startWalkMinutes)} ·{' '}
+                              {formatDistance(result.journey.startWalkMeters)}
+                            </strong>
+                          </div>
+                          <div>
+                            <span><MapPin size={15} /> Dernier transport → adresse</span>
+                            <strong>
+                              {formatMinutes(result.journey.endWalkMinutes)} ·{' '}
+                              {formatDistance(result.journey.endWalkMeters)}
+                            </strong>
+                          </div>
                         </div>
-                      </div>
+                      )}
 
                       {result.journey.lines.length > 0 && (
                         <div className="journey-lines">
@@ -412,22 +414,16 @@ export default function App() {
                         <strong>{formatDistance(result.directDistanceMeters!)}</strong>
                       </div>
 
-                      <div className="actions">
-                        <a
-                          href={googleMapsUrl(referenceAddress, result.address)}
-                          target="_blank"
-                          rel="noreferrer"
-                        >
-                          Google Maps <ExternalLink size={14} />
-                        </a>
-                        <a
-                          href={citymapperUrl(referenceAddress, result.address)}
-                          target="_blank"
-                          rel="noreferrer"
-                        >
-                          Citymapper <ExternalLink size={14} />
-                        </a>
-                      </div>
+                      {result.comparison && (
+                        <div className="actions">
+                          <a href={result.comparison.googleMaps} target="_blank" rel="noreferrer">
+                            Google Maps <ExternalLink size={14} />
+                          </a>
+                          <a href={result.comparison.citymapper} target="_blank" rel="noreferrer">
+                            Citymapper <ExternalLink size={14} />
+                          </a>
+                        </div>
+                      )}
                     </>
                   )}
                 </div>
@@ -436,29 +432,12 @@ export default function App() {
           </div>
 
           <p className="footnote">
-            Le calcul utilise les itinéraires disponibles au moment de la recherche. Le score donne
-            davantage de poids à la marche et aux correspondances qu’à la distance pure.
+            Le calcul utilise les itinéraires disponibles au moment de la recherche et privilégie la
+            marche et les correspondances. Le pourcentage indiqué est un percentile <strong>relatif
+            au lot comparé</strong>, pas une note absolue.
           </p>
         </section>
       )}
-
-      <section className="panel api-cta animated-panel">
-        <div>
-          <span className="eyebrow">
-            <Terminal size={14} />
-            API publique
-          </span>
-          <h2>Réutilisez le classement depuis vos propres outils</h2>
-          <p>
-            Envoyez une adresse de départ et une liste d’adresses, récupérez le classement en JSON.
-            Documentation et test en direct sur la page dédiée.
-          </p>
-        </div>
-        <a className="api-cta-button" href="#/api">
-          Ouvrir l’API &amp; le test JSON
-          <ArrowRight size={16} />
-        </a>
-      </section>
 
       <footer>
         Géocodage : BAN / IGN · Routage transport :{' '}

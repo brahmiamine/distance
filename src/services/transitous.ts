@@ -1,6 +1,20 @@
 import type { GeocodedAddress, JourneyRecommendation, TransitType } from '../types';
+import { haversineDistanceMeters } from './geo';
+import { fetchJson, type HttpRequestOptions } from './http';
 
 const PLAN_URL = 'https://api.transitous.org/api/v6/plan';
+const PLAN_TTL_SECONDS = 60;
+const WALK_SPEED_MPS = 1.35;
+const WALK_DETOUR_FACTOR = 1.25;
+const MAX_WALK_FALLBACK_MINUTES = 60;
+
+export interface JourneyContext {
+  fetchImpl?: typeof fetch;
+  signal?: AbortSignal;
+  cache?: HttpRequestOptions['cache'];
+  timeoutMs?: number;
+  retries?: number;
+}
 
 interface Place {
   name?: string;
@@ -63,7 +77,7 @@ function numberOrZero(value: unknown): number {
 function legDistance(leg: Leg): number {
   const distance = Number(leg.distance);
   if (Number.isFinite(distance) && distance >= 0) return distance;
-  return numberOrZero(leg.duration) * 1.35;
+  return numberOrZero(leg.duration) * WALK_SPEED_MPS;
 }
 
 function summarize(itinerary: Itinerary): JourneyRecommendation | null {
@@ -98,8 +112,7 @@ function summarize(itinerary: Itinerary): JourneyRecommendation | null {
     .filter(Boolean)
     .filter((line, index, all) => index === 0 || line !== all[index - 1]);
 
-  // Lower is better. Walking and changes are deliberately expensive because
-  // the app is meant to recommend an address that is easy to reach every day.
+  // Plus bas = mieux. La marche et les changements sont volontairement coûteux.
   const preferenceCost =
     durationMinutes * 0.45 +
     (startWalkMinutes + endWalkMinutes) * 1.8 +
@@ -108,6 +121,7 @@ function summarize(itinerary: Itinerary): JourneyRecommendation | null {
     Math.max(0, transportCount - 1) * 5;
 
   return {
+    kind: 'transit',
     durationMinutes,
     transfers,
     transportCount,
@@ -125,10 +139,39 @@ function summarize(itinerary: Itinerary): JourneyRecommendation | null {
   };
 }
 
+/**
+ * Repli piéton : utilisé quand aucun itinéraire en transport n'existe.
+ * La marche est pénalisée comme de la marche (× 1.8) pour rester comparable.
+ */
+export function buildWalkJourney(
+  origin: GeocodedAddress,
+  destination: GeocodedAddress,
+): JourneyRecommendation {
+  const meters = haversineDistanceMeters(origin, destination) * WALK_DETOUR_FACTOR;
+  const minutes = meters / WALK_SPEED_MPS / 60;
+
+  return {
+    kind: 'walk',
+    durationMinutes: minutes,
+    transfers: 0,
+    transportCount: 0,
+    walkingMinutes: minutes,
+    walkingMeters: meters,
+    startWalkMinutes: minutes,
+    startWalkMeters: meters,
+    endWalkMinutes: 0,
+    endWalkMeters: 0,
+    transferWalkMinutes: 0,
+    lines: [],
+    preferenceCost: minutes * 0.45 + minutes * 1.8,
+  };
+}
+
 export async function findRecommendedJourney(
   origin: GeocodedAddress,
   destination: GeocodedAddress,
   types: TransitType[],
+  context: JourneyContext = {},
 ): Promise<JourneyRecommendation> {
   const modes = apiModes(types);
   if (!modes.length) throw new Error('Sélectionnez au moins un transport.');
@@ -151,24 +194,29 @@ export async function findRecommendedJourney(
     joinInterlinedLegs: 'true',
   });
 
-  const response = await fetch(`${PLAN_URL}?${params.toString()}`, {
+  const url = `${PLAN_URL}?${params.toString()}`;
+  const data = await fetchJson<PlanResponse>(url, {
     headers: { Accept: 'application/json' },
+    fetchImpl: context.fetchImpl,
+    signal: context.signal,
+    cache: context.cache,
+    cacheKey: `plan:${url}`,
+    cacheTtlSeconds: PLAN_TTL_SECONDS,
+    timeoutMs: context.timeoutMs,
+    retries: context.retries,
   });
 
-  if (!response.ok) {
-    throw new Error(`Calcul transport indisponible (${response.status})`);
-  }
-
-  const data = (await response.json()) as PlanResponse;
   const itineraries = Array.isArray(data.itineraries) ? data.itineraries : [];
   const choices = itineraries
     .map(summarize)
     .filter((journey): journey is JourneyRecommendation => journey !== null)
     .sort((a, b) => a.preferenceCost - b.preferenceCost);
 
-  if (!choices.length) {
-    throw new Error('Aucun itinéraire en transport trouvé actuellement.');
-  }
+  if (choices.length) return choices[0];
 
-  return choices[0];
+  // Aucun transport disponible : on propose la marche si elle reste raisonnable.
+  const walk = buildWalkJourney(origin, destination);
+  if (walk.durationMinutes <= MAX_WALK_FALLBACK_MINUTES) return walk;
+
+  throw new Error('Aucun itinéraire en transport trouvé actuellement.');
 }

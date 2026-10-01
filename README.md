@@ -23,6 +23,14 @@ Le classement privilégie volontairement :
 
 Le moteur examine plusieurs itinéraires et ne retient pas forcément le plus rapide s'il nécessite beaucoup de marche ou de changements.
 
+## Fiabilité
+
+- **Géocodage validé** : le code postal et la ville saisis sont comparés aux candidats IGN, les adresses précises (numéro/voie) et le score IGN sont privilégiés, et un rattachement manifestement faux est rejeté avec un message clair.
+- **Résilience réseau** : les appels BAN / MOTIS ont un délai maximal, des nouvelles tentatives (5xx / 429 / réseau) et un cache (mémoire + `localStorage`).
+- **Repli marche** : si aucun transport n'est pertinent (destination proche), un trajet à pied raisonnable est proposé au lieu d'une erreur.
+- **Classement honnête** : le rang est partagé en cas d'égalité (mention « ex æquo ») et le pourcentage affiché est un **percentile relatif au lot comparé**, jamais une note absolue.
+- **Appels parallélisés** (4 en parallèle) pour comparer plus vite.
+
 ## Sources
 
 - Géocodage : https://data.geopf.fr/geocodage/search
@@ -33,50 +41,11 @@ Le moteur examine plusieurs itinéraires et ne retient pas forcément le plus ra
 
 Transitous est utilisé pour ce projet open-source non commercial conformément à sa politique d'utilisation.
 
-## API
-
-L'application expose une API HTTP servie par le même Worker Cloudflare que l'interface.
-
-`POST /api/rank`
-
-```json
-{
-  "origin": "10 avenue des Champs-Élysées, 75008 Paris",
-  "addresses": [
-    "56 avenue de l'Agent Sarre, 92700 Colombes",
-    "5 boulevard des Bouvets, 92747 Nanterre"
-  ],
-  "types": ["metro", "rail", "tram", "bus"]
-}
-```
-
-- `origin` (requis) : adresse de départ, texte libre (géocodée).
-- `addresses` (requis) : 1 à 20 adresses de destination.
-- `types` (optionnel) : `metro`, `rail`, `tram`, `bus`, `cableway`. Par défaut : métro, RER/train, tram, bus.
-
-La réponse contient `origin` (adresse de départ géocodée) et `ranking`, un tableau déjà trié (meilleur score en premier), identique à ce qu'affiche l'interface.
-
-```bash
-curl -X POST https://<ton-worker>.workers.dev/api/rank \
-  -H 'content-type: application/json' \
-  -d '{"origin":"10 avenue des Champs-Élysées, 75008 Paris","addresses":["56 avenue de l Agent Sarre, 92700 Colombes"]}'
-```
-
-Une page dédiée, accessible depuis le lien en bas du comparateur (route `#/api`), permet de construire la requête, copier le curl et **tester l'appel en direct** avec affichage de la réponse JSON.
-
-La logique de classement est partagée entre l'interface et l'API dans `src/services/ranking.ts`.
-
 ## Développement
 
 ```bash
 npm install
 npm run dev
-```
-
-API en local (nécessite un `dist/` à jour : lancer `npm run build` d'abord) :
-
-```bash
-npm run dev:worker
 ```
 
 Build :
@@ -85,21 +54,20 @@ Build :
 npm run build
 ```
 
-## Déploiement Cloudflare Workers
-
-Un seul Worker sert l'interface et l'API `/api/rank` (`wrangler.toml`).
+## Tests
 
 ```bash
-npm run deploy   # build du front + déploiement Cloudflare
+npm test              # suite de tests
+npm run test:coverage # rapport de couverture
 ```
+
+Les tests couvrent le géocodage (validation, cache, erreurs), le routage (coût, repli marche), le classement (rang, ex æquo, percentile, parallélisation), la couche HTTP (timeout, retry, cache), le cache et la construction des liens Google Maps / Citymapper.
 
 ## GitHub Pages
 
-Le workflow `.github/workflows/deploy-pages.yml` construit et déploie automatiquement `main` (build en mode `pages`, base `/distance/`).
+Le workflow `.github/workflows/deploy-pages.yml` construit et déploie automatiquement `main`.
 
 URL : https://brahmiamine.github.io/distance/
-
-GitHub Pages ne sert que l'interface statique ; l'API `/api/rank` est uniquement disponible via le Worker Cloudflare.
 
 ## Important
 
