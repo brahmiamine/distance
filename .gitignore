@@ -3,3 +3,7 @@ dist
 coverage
 .DS_Store
 *.local
+
+# Outil local de récupération d'adresses (usage perso uniquement).
+# Volontairement non publié : décommenter/retirer si tu veux vraiment le committer.
+scripts/doctolib-addresses.mjs
