@@ -21,7 +21,8 @@ import ResultsMap from './components/ResultsMap';
 import { addressKey, extractAddresses } from './services/addressExtraction';
 import { browserCache } from './services/cache';
 import { formatDepartureTime } from './services/departureTime';
-import { DEFAULT_TRANSIT_TYPES, MAX_ADDRESSES, rankAddresses } from './services/ranking';
+import { DEFAULT_TRANSIT_TYPES, MAX_ADDRESSES, rankAddresses, type ExcludedAddress } from './services/ranking';
+import { preFilterByZone, ZONE_LABELS, ZONES, type Zone } from './services/zoneFilter';
 import type { GeocodedAddress, RankedAddress, TransitType } from './types';
 import './styles.css';
 
@@ -37,6 +38,18 @@ const TYPE_LABELS: Record<TransitType, string> = {
 
 const REFERENCE_STORAGE_KEY = 'distance-transports-reference';
 const ADDRESSES_STORAGE_KEY = 'distance-transports-addresses';
+const ZONE_STORAGE_KEY = 'distance-transports-zone';
+
+const ZONE_HINTS: Record<Zone, string> = {
+  paris: 'Codes postaux 75',
+  idf: '75, 77, 78, 91, 92, 93, 94, 95',
+  all: 'Aucun filtre',
+};
+
+function readStoredZone(): Zone {
+  const stored = localStorage.getItem(ZONE_STORAGE_KEY);
+  return ZONES.includes(stored as Zone) ? (stored as Zone) : 'all';
+}
 
 const EXAMPLE_ADDRESSES = `73, boulevard de Bezons, 78500, SARTROUVILLE
 56 avenue de l'Agent Sarre, 92700, COLOMBES
@@ -84,6 +97,9 @@ export default function App() {
     () => localStorage.getItem(ADDRESSES_STORAGE_KEY) ?? '',
   );
   const [selectedTypes, setSelectedTypes] = useState<TransitType[]>(DEFAULT_TRANSIT_TYPES);
+  const [zone, setZone] = useState<Zone>(readStoredZone);
+  const [excluded, setExcluded] = useState<ExcludedAddress[]>([]);
+  const [resultZone, setResultZone] = useState<Zone>('all');
   const [referenceAddress, setReferenceAddress] = useState<GeocodedAddress | null>(null);
   const [results, setResults] = useState<RankedAddress[]>([]);
   const [departureTime, setDepartureTime] = useState<Date | null>(null);
@@ -126,6 +142,13 @@ export default function App() {
     localStorage.setItem(ADDRESSES_STORAGE_KEY, addressesText);
   }, [addressesText]);
 
+  useEffect(() => {
+    localStorage.setItem(ZONE_STORAGE_KEY, zone);
+  }, [zone]);
+
+  // Aperçu du filtre de zone avant calcul (d'après les codes postaux saisis).
+  const zonePreview = useMemo(() => preFilterByZone(addresses, zone), [addresses, zone]);
+
   const toggleType = (type: TransitType) => {
     setSelectedTypes((current) =>
       current.includes(type) ? current.filter((item) => item !== type) : [...current, type],
@@ -162,6 +185,7 @@ export default function App() {
     setResults([]);
     setMapFocus(null);
     setReferenceAddress(null);
+    setExcluded([]);
 
     if (!referenceText.trim()) {
       setGlobalError('Renseignez une adresse de départ.');
@@ -171,7 +195,11 @@ export default function App() {
       setGlobalError('Ajoutez au moins une adresse à comparer.');
       return;
     }
-    if (addresses.length > MAX_ADDRESSES) {
+    if (zonePreview.kept.length < 1) {
+      setGlobalError(`Aucune adresse dans la zone « ${ZONE_LABELS[zone]} ».`);
+      return;
+    }
+    if (zonePreview.kept.length > MAX_ADDRESSES) {
       setGlobalError(`La V1 accepte au maximum ${MAX_ADDRESSES} adresses à la fois.`);
       return;
     }
@@ -183,10 +211,11 @@ export default function App() {
     setLoading(true);
 
     try {
-      const { origin, ranking, departureTime: usedTime } = await rankAddresses({
+      const { origin, ranking, departureTime: usedTime, excluded: skipped } = await rankAddresses({
         origin: referenceText.trim(),
         addresses,
         types: selectedTypes,
+        zone,
         onProgress: setProgress,
         context: { cache: APP_CACHE, concurrency: 4 },
       });
@@ -194,6 +223,11 @@ export default function App() {
       setReferenceAddress(origin);
       setResults(ranking);
       setDepartureTime(usedTime);
+      setExcluded(skipped);
+      setResultZone(zone);
+      if (!ranking.length) {
+        setGlobalError(`Aucune adresse dans la zone « ${ZONE_LABELS[zone]} » après vérification.`);
+      }
     } catch (error) {
       setGlobalError(error instanceof Error ? error.message : 'Erreur inconnue');
     } finally {
@@ -203,6 +237,7 @@ export default function App() {
   };
 
   const clearAll = () => {
+    setExcluded([]);
     setReferenceText('');
     setAddressesText('');
     setReferenceAddress(null);
@@ -330,6 +365,39 @@ export default function App() {
           />
 
           <fieldset>
+            <legend>Zone des destinations à calculer</legend>
+            <div className="transport-options zone-options" role="radiogroup">
+              {ZONES.map((option) => (
+                <label key={option} className={zone === option ? 'chip active' : 'chip'}>
+                  <input
+                    type="radio"
+                    name="zone"
+                    value={option}
+                    checked={zone === option}
+                    onChange={() => setZone(option)}
+                  />
+                  <span className="zone-text">
+                    <strong>{ZONE_LABELS[option]}</strong>
+                    <small>{ZONE_HINTS[option]}</small>
+                  </span>
+                </label>
+              ))}
+            </div>
+            {addresses.length > 0 && zone !== 'all' && (
+              <p className="zone-summary">
+                <strong>{zonePreview.kept.length}</strong> adresse{zonePreview.kept.length > 1 ? 's' : ''} à
+                calculer
+                {zonePreview.excluded.length > 0 && (
+                  <> · <strong>{zonePreview.excluded.length}</strong> hors zone ignorée{zonePreview.excluded.length > 1 ? 's' : ''}</>
+                )}
+                {zonePreview.unknown.length > 0 && (
+                  <> · {zonePreview.unknown.length} sans code postal (vérifiée{zonePreview.unknown.length > 1 ? 's' : ''} après géocodage)</>
+                )}
+              </p>
+            )}
+          </fieldset>
+
+          <fieldset>
             <legend>Transports autorisés</legend>
             <div className="transport-options">
               {(Object.keys(TYPE_LABELS) as TransitType[]).map((type) => (
@@ -366,7 +434,7 @@ export default function App() {
               {loading ? <span className="spinner" /> : <Sparkles size={18} />}
               {loading
                 ? 'Calcul des itinéraires…'
-                : `Classer ${addresses.length || ''} destination${addresses.length > 1 ? 's' : ''}`}
+                : `Classer ${zonePreview.kept.length || ''} destination${zonePreview.kept.length > 1 ? 's' : ''}`}
             </span>
           </button>
           {progress && <p className="progress"><span />{progress}</p>}
@@ -409,6 +477,23 @@ export default function App() {
             </div>
             <span className="method-note">Les rangs ex æquo partagent la même position</span>
           </div>
+
+          {excluded.length > 0 && (
+            <details className="excluded-note">
+              <summary>
+                {excluded.length} adresse{excluded.length > 1 ? 's' : ''} hors zone « {ZONE_LABELS[resultZone]} »
+                non calculée{excluded.length > 1 ? 's' : ''}
+              </summary>
+              <ul>
+                {excluded.map((item) => (
+                  <li key={item.input}>
+                    {item.label ?? item.input}
+                    {item.label && item.postcode ? ` (${item.postcode})` : ''}
+                  </li>
+                ))}
+              </ul>
+            </details>
+          )}
 
           <div className="results-list">
             {results.map((result, index) => (

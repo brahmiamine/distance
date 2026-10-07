@@ -11,6 +11,16 @@ Application React + Vite qui classe une liste d'adresses selon la facilité rée
 5. Choisir pour chaque destination l'itinéraire le plus adapté aux priorités du projet.
 6. Classer les destinations par recommandation.
 
+## Filtre de zone
+
+Avant le calcul, le sélecteur **« Zone des destinations à calculer »** limite les itinéraires à :
+
+- **Paris** (codes postaux 75) ;
+- **Île-de-France** (75, 77, 78, 91, 92, 93, 94, 95) ;
+- **Toutes** (aucun filtre, par défaut).
+
+Le tri se fait d'abord sur le code postal saisi, sans appel réseau ; une adresse sans code postal est géocodée puis vérifiée. Les adresses écartées ne sont pas calculées et sont listées au-dessus des résultats. Le choix est mémorisé dans le navigateur.
+
 ## Critères de recommandation
 
 Chaque destination reçoit un **coût généralisé** exprimé en « minutes ressenties » (plus bas = mieux) :

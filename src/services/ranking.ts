@@ -5,6 +5,7 @@ import { geocodeAddress } from './geocoding';
 import { haversineDistanceMeters } from './geo';
 import { buildComparisonLinks } from './links';
 import { findRecommendedJourney } from './transitous';
+import { postcodeInZone, preFilterByZone, type Zone } from './zoneFilter';
 
 export const MAX_ADDRESSES = 20;
 export const DEFAULT_TRANSIT_TYPES: TransitType[] = ['metro', 'rail', 'tram', 'bus'];
@@ -30,6 +31,8 @@ export interface RankAddressesOptions {
   origin: string;
   addresses: string[];
   types: TransitType[];
+  /** Zone des destinations à calculer (défaut : toutes). */
+  zone?: Zone;
   onProgress?: (message: string) => void;
   context?: RankContext;
 }
@@ -39,6 +42,20 @@ export interface RankAddressesResult {
   ranking: RankedAddress[];
   /** Horaire de référence utilisé pour tous les itinéraires. */
   departureTime: Date;
+  /** Destinations ignorées car hors de la zone choisie (non calculées). */
+  excluded: ExcludedAddress[];
+}
+
+export interface ExcludedAddress {
+  input: string;
+  /** Libellé géocodé, si l'exclusion a été décidée après géocodage. */
+  label?: string;
+  postcode?: string;
+}
+
+/** Marqueur interne : destination géocodée hors de la zone choisie. */
+class OutOfZone {
+  constructor(readonly excluded: ExcludedAddress) {}
 }
 
 function isTied(a: number, b: number): boolean {
@@ -115,6 +132,7 @@ export async function rankAddresses({
   origin,
   addresses,
   types,
+  zone = 'all',
   onProgress,
   context = {},
 }: RankAddressesOptions): Promise<RankAddressesResult> {
@@ -126,9 +144,18 @@ export async function rankAddresses({
   const concurrency = context.concurrency ?? DEFAULT_CONCURRENCY;
   let completed = 0;
 
-  const collected = await mapWithConcurrency(addresses, concurrency, async (input) => {
+  // Tri préalable sans réseau d'après le code postal saisi : les adresses
+  // hors zone ne sont ni géocodées ni calculées.
+  const { kept, excluded: preExcluded } = preFilterByZone(addresses, zone);
+  const excluded: ExcludedAddress[] = preExcluded.map((input) => ({ input }));
+
+  const outcomes = await mapWithConcurrency(kept, concurrency, async (input) => {
     try {
       const destination = await geocodeAddress(input, context);
+      // Adresse saisie sans code postal : la zone est vérifiée sur le géocodage.
+      if (destination.postcode && !postcodeInZone(destination.postcode, zone)) {
+        return new OutOfZone({ input, label: destination.label, postcode: destination.postcode });
+      }
       const directDistanceMeters = haversineDistanceMeters(originAddress, destination);
       const journey = await findRecommendedJourney(originAddress, destination, types, journeyContext);
 
@@ -149,12 +176,18 @@ export async function rankAddresses({
       } satisfies RankedAddress;
     } finally {
       completed += 1;
-      onProgress?.(`Itinéraire ${completed}/${addresses.length} — ${input}`);
+      onProgress?.(`Itinéraire ${completed}/${kept.length} — ${input}`);
     }
   });
+
+  const collected: RankedAddress[] = [];
+  for (const outcome of outcomes) {
+    if (outcome instanceof OutOfZone) excluded.push(outcome.excluded);
+    else collected.push(outcome);
+  }
 
   applyRanks(collected);
   collected.sort(compareRanked);
 
-  return { origin: originAddress, ranking: collected, departureTime };
+  return { origin: originAddress, ranking: collected, departureTime, excluded };
 }

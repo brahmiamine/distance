@@ -142,6 +142,57 @@ describe('rankAddresses', () => {
   });
 });
 
+describe('rankAddresses — filtre de zone', () => {
+  it('ne géocode ni ne calcule les adresses hors zone (code postal saisi)', async () => {
+    mockJourney.mockResolvedValue(journey(30));
+
+    const { ranking, excluded } = await rankAddresses({
+      origin: 'depart',
+      addresses: ['1 rue A, 75019 Paris', '2 rue B, 92100 Boulogne'],
+      types: ['metro'],
+      zone: 'paris',
+    });
+
+    expect(ranking.map((entry) => entry.address.label)).toEqual(['1 rue A, 75019 Paris']);
+    expect(excluded).toEqual([{ input: '2 rue B, 92100 Boulogne' }]);
+    expect(mockGeocode).not.toHaveBeenCalledWith('2 rue B, 92100 Boulogne', expect.anything());
+    expect(mockJourney).toHaveBeenCalledTimes(1);
+  });
+
+  it('vérifie après géocodage une adresse saisie sans code postal', async () => {
+    mockGeocode.mockImplementation(async (input: string) => ({
+      ...address(input.trim()),
+      label: input === 'sans cp' ? 'Rue X 93200 Saint-Denis' : input.trim(),
+      postcode: input === 'sans cp' ? '93200' : '75001',
+    }));
+    mockJourney.mockResolvedValue(journey(30));
+
+    const { ranking, excluded } = await rankAddresses({
+      origin: 'depart',
+      addresses: ['sans cp', '3 rue C, 75001 Paris'],
+      types: ['metro'],
+      zone: 'paris',
+    });
+
+    expect(ranking).toHaveLength(1);
+    expect(excluded).toEqual([{ input: 'sans cp', label: 'Rue X 93200 Saint-Denis', postcode: '93200' }]);
+    expect(mockJourney).toHaveBeenCalledTimes(1);
+  });
+
+  it('ne filtre rien par défaut', async () => {
+    mockJourney.mockResolvedValue(journey(30));
+
+    const { ranking, excluded } = await rankAddresses({
+      origin: 'depart',
+      addresses: ['1 place Masséna, 06000 Nice'],
+      types: ['metro'],
+    });
+
+    expect(ranking).toHaveLength(1);
+    expect(excluded).toEqual([]);
+  });
+});
+
 describe('mapWithConcurrency', () => {
   it('traite tous les éléments et respecte la limite', async () => {
     let active = 0;
