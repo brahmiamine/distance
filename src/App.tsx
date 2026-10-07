@@ -1,4 +1,4 @@
-import { type CSSProperties, FormEvent, useEffect, useMemo, useState } from 'react';
+import { type CSSProperties, Fragment, FormEvent, useEffect, useMemo, useState } from 'react';
 import {
   Armchair,
   ArrowRight,
@@ -340,11 +340,13 @@ export default function App() {
             <div className="eyebrow-pill"><Sparkles size={13} />Comparateur transport · Île-de-France</div>
             <h1>
               {HERO_WORDS.map((word, index) => (
-                <span className="word" key={word}>
-                  <span className={word === 'pratique' ? 'word-in accent' : 'word-in'} style={vars({ '--i': index })}>
-                    {word}
+                <Fragment key={word}>
+                  <span className="word">
+                    <span className={word === 'pratique' ? 'word-in accent' : 'word-in'} style={vars({ '--i': index })}>
+                      {word}
+                    </span>
                   </span>{' '}
-                </span>
+                </Fragment>
               ))}
             </h1>
             <p className="hero-lead">
