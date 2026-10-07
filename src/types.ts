@@ -32,9 +32,12 @@ export interface JourneyRecommendation {
   endWalkMinutes: number;
   endWalkMeters: number;
   transferWalkMinutes: number;
+  /** Attente moyenne au premier arrêt sur l'heure de référence (fréquence). */
+  averageWaitMinutes: number;
   startStopName?: string;
   endStopName?: string;
   lines: string[];
+  /** Coût généralisé moyen en « minutes ressenties » (plus bas = mieux). */
   preferenceCost: number;
 }
 

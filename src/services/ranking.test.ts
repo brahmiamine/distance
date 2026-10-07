@@ -28,6 +28,7 @@ function journey(cost: number, kind: JourneyRecommendation['kind'] = 'transit'):
     endWalkMinutes: 0,
     endWalkMeters: 0,
     transferWalkMinutes: 0,
+    averageWaitMinutes: 0,
     lines: kind === 'walk' ? [] : ['1'],
     preferenceCost: cost,
   };
@@ -43,13 +44,14 @@ describe('rankAddresses', () => {
     const costs: Record<string, number> = { a: 30, b: 40, c: 50 };
     mockJourney.mockImplementation(async (_origin, destination) => journey(costs[destination.label]));
 
-    const { origin, ranking } = await rankAddresses({
+    const { origin, ranking, departureTime } = await rankAddresses({
       origin: 'depart',
       addresses: ['a', 'b', 'c'],
       types: ['metro'],
     });
 
     expect(origin.label).toBe('depart');
+    expect(departureTime).toBeInstanceOf(Date);
     expect(ranking.map((entry) => entry.rank)).toEqual([1, 2, 3]);
     expect(ranking.map((entry) => entry.percentile)).toEqual([100, 50, 0]);
     expect(ranking.every((entry) => entry.tied === false)).toBe(true);
@@ -131,6 +133,12 @@ describe('rankAddresses', () => {
     });
 
     expect(mockGeocode).toHaveBeenCalledWith('depart', expect.objectContaining({ cache }));
+    expect(mockJourney).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.anything(),
+      ['metro'],
+      expect.objectContaining({ cache, departureTime: expect.any(Date) }),
+    );
   });
 });
 

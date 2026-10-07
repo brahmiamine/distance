@@ -18,6 +18,7 @@ import {
 } from 'lucide-react';
 import { addressKey, extractAddresses } from './services/addressExtraction';
 import { browserCache } from './services/cache';
+import { formatDepartureTime } from './services/departureTime';
 import { DEFAULT_TRANSIT_TYPES, MAX_ADDRESSES, rankAddresses } from './services/ranking';
 import type { GeocodedAddress, RankedAddress, TransitType } from './types';
 import './styles.css';
@@ -83,6 +84,7 @@ export default function App() {
   const [selectedTypes, setSelectedTypes] = useState<TransitType[]>(DEFAULT_TRANSIT_TYPES);
   const [referenceAddress, setReferenceAddress] = useState<GeocodedAddress | null>(null);
   const [results, setResults] = useState<RankedAddress[]>([]);
+  const [departureTime, setDepartureTime] = useState<Date | null>(null);
   const [loading, setLoading] = useState(false);
   const [progress, setProgress] = useState('');
   const [globalError, setGlobalError] = useState('');
@@ -166,7 +168,7 @@ export default function App() {
     setLoading(true);
 
     try {
-      const { origin, ranking } = await rankAddresses({
+      const { origin, ranking, departureTime: usedTime } = await rankAddresses({
         origin: referenceText.trim(),
         addresses,
         types: selectedTypes,
@@ -176,6 +178,7 @@ export default function App() {
 
       setReferenceAddress(origin);
       setResults(ranking);
+      setDepartureTime(usedTime);
     } catch (error) {
       setGlobalError(error instanceof Error ? error.message : 'Erreur inconnue');
     } finally {
@@ -337,7 +340,7 @@ export default function App() {
             </strong>
             <span><Footprints size={16} /> Peu de marche</span>
             <span><ArrowRightLeft size={16} /> Peu de correspondances</span>
-            <span><Clock size={16} /> Temps raisonnable</span>
+            <span><Clock size={16} /> Temps et attente raisonnables</span>
             <span><Navigation size={16} /> Distance plus courte</span>
           </div>
 
@@ -364,7 +367,10 @@ export default function App() {
             <div>
               <span className="eyebrow">Départ unique</span>
               <h2>{referenceAddress.label}</h2>
-              <p>Tous les itinéraires ci-dessous partent de cette adresse.</p>
+              <p>
+                Tous les itinéraires ci-dessous partent de cette adresse
+                {departureTime ? `, horaires du ${formatDepartureTime(departureTime)}` : ''}.
+              </p>
               {referenceAddress.confidence && referenceAddress.confidence !== 'high' && (
                 <p className="confidence-note">{confidenceLabel(referenceAddress.confidence)}</p>
               )}
@@ -424,6 +430,9 @@ export default function App() {
                           <Clock size={17} />
                           <span>Trajet</span>
                           <strong>{formatMinutes(result.journey.durationMinutes)}</strong>
+                          {result.journey.averageWaitMinutes >= 1 && (
+                            <small>+ {formatMinutes(result.journey.averageWaitMinutes)} d’attente moy.</small>
+                          )}
                         </div>
                         <div className="metric priority">
                           <Footprints size={17} />
@@ -446,7 +455,7 @@ export default function App() {
                       {result.journey.kind === 'walk' ? (
                         <div className="walk-details">
                           <div>
-                            <span><Footprints size={15} /> Aucun transport : trajet à pied</span>
+                            <span><Footprints size={15} /> Trajet direct à pied (plus simple qu’en transport)</span>
                             <strong>
                               {formatMinutes(result.journey.walkingMinutes)} ·{' '}
                               {formatDistance(result.journey.walkingMeters)}
@@ -508,8 +517,9 @@ export default function App() {
           </div>
 
           <p className="footnote">
-            Le calcul utilise les itinéraires disponibles au moment de la recherche et privilégie la
-            marche et les correspondances. Le pourcentage indiqué est un percentile <strong>relatif
+            Le calcul utilise les horaires d’un jour ouvré à 9 h et un coût « ressenti » : une
+            minute de marche ou d’attente pèse plus qu’une minute assis, chaque correspondance est
+            pénalisée et la marche directe est retenue quand elle est plus simple. Le pourcentage indiqué est un percentile <strong>relatif
             au lot comparé</strong>, pas une note absolue.
           </p>
         </section>

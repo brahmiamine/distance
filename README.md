@@ -13,15 +13,21 @@ Application React + Vite qui classe une liste d'adresses selon la facilité rée
 
 ## Critères de recommandation
 
-Le classement privilégie volontairement :
+Chaque destination reçoit un **coût généralisé** exprimé en « minutes ressenties » (plus bas = mieux) :
 
-1. peu de marche entre l'adresse et les transports ;
-2. peu de correspondances ;
-3. peu de véhicules / lignes à prendre ;
-4. un temps de trajet raisonnable ;
-5. une distance globale plus courte comme critère secondaire.
+| Élément | Poids |
+| --- | --- |
+| minute assis dans un véhicule | × 1 |
+| minute de marche (départ, arrivée, correspondances) | × 1,8 |
+| minute d'attente en correspondance | × 1,5 |
+| minute d'attente au premier arrêt | × 1 |
+| chaque véhicule pris | + 5 min |
+| chaque correspondance | + 8 min |
+| distance à vol d'oiseau (critère secondaire) | + 0,3 min / km |
 
-Le moteur examine plusieurs itinéraires et ne retient pas forcément le plus rapide s'il nécessite beaucoup de marche ou de changements.
+- **Horaire de référence fixe** : les itinéraires sont calculés pour le prochain jour ouvré à 9 h (heure de Paris), et non à l'heure du clic, pour un classement reproductible.
+- **Fréquence des lignes** : on simule un voyageur prêt à partir à n'importe quelle minute de l'heure qui suit ; il prend l'option la moins coûteuse (attente comprise). Le coût retenu est la moyenne : une ligne rapide mais rare est pénalisée par son attente moyenne.
+- **Marche directe** : le trajet à pied calculé par MOTIS est mis en concurrence avec les transports. Une destination à 15 min à pied n'est plus battue par un bus qui impose presque autant de marche.
 
 ## Fiabilité
 

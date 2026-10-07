@@ -1,5 +1,6 @@
 import type { GeocodedAddress, RankedAddress, TransitType } from '../types';
 import type { CacheStore } from './cache';
+import { referenceDepartureTime } from './departureTime';
 import { geocodeAddress } from './geocoding';
 import { haversineDistanceMeters } from './geo';
 import { buildComparisonLinks } from './links';
@@ -13,11 +14,16 @@ export const DEFAULT_CONCURRENCY = 4;
 /** Deux coûts sont considérés ex æquo en dessous de 2 % d'écart relatif. */
 const TIE_RATIO = 0.02;
 
+/** Critère secondaire : 0,3 « minute ressentie » par km à vol d'oiseau. */
+const DISTANCE_WEIGHT_PER_KM = 0.3;
+
 export interface RankContext {
   fetchImpl?: typeof fetch;
   signal?: AbortSignal;
   cache?: CacheStore | null;
   concurrency?: number;
+  /** Heure de départ de référence (défaut : prochain jour ouvré à 9 h). */
+  departureTime?: Date;
 }
 
 export interface RankAddressesOptions {
@@ -31,6 +37,8 @@ export interface RankAddressesOptions {
 export interface RankAddressesResult {
   origin: GeocodedAddress;
   ranking: RankedAddress[];
+  /** Horaire de référence utilisé pour tous les itinéraires. */
+  departureTime: Date;
 }
 
 function isTied(a: number, b: number): boolean {
@@ -100,7 +108,7 @@ function compareRanked(a: RankedAddress, b: RankedAddress): number {
 
 /**
  * Géocode une adresse de départ puis classe une liste de destinations selon le
- * compromis marche / correspondances / temps / distance. Logique utilisée par
+ * coût généralisé moyen (marche, attente, correspondances, temps) puis la distance. Logique utilisée par
  * l'interface React et par les tests.
  */
 export async function rankAddresses({
@@ -113,6 +121,8 @@ export async function rankAddresses({
   onProgress?.('Géocodage de l’adresse de départ…');
   const originAddress = await geocodeAddress(origin, context);
 
+  const departureTime = context.departureTime ?? referenceDepartureTime();
+  const journeyContext = { ...context, departureTime };
   const concurrency = context.concurrency ?? DEFAULT_CONCURRENCY;
   let completed = 0;
 
@@ -120,9 +130,9 @@ export async function rankAddresses({
     try {
       const destination = await geocodeAddress(input, context);
       const directDistanceMeters = haversineDistanceMeters(originAddress, destination);
-      const journey = await findRecommendedJourney(originAddress, destination, types, context);
+      const journey = await findRecommendedJourney(originAddress, destination, types, journeyContext);
 
-      const distancePenalty = (directDistanceMeters / 1000) * 0.35;
+      const distancePenalty = (directDistanceMeters / 1000) * DISTANCE_WEIGHT_PER_KM;
       const cost = journey.preferenceCost + distancePenalty;
 
       return {
@@ -146,5 +156,5 @@ export async function rankAddresses({
   applyRanks(collected);
   collected.sort(compareRanked);
 
-  return { origin: originAddress, ranking: collected };
+  return { origin: originAddress, ranking: collected, departureTime };
 }
