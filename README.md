@@ -56,6 +56,7 @@ Après le calcul, une carte (Leaflet + OpenStreetMap) affiche l'adresse de dépa
 - repères numérotés par rang, colorés selon le percentile (★ = meilleure, vert, bleu, gris) ;
 - clic sur un repère : résumé du trajet retenu, tracé départ → destination et bouton « Voir la fiche » ;
 - bouton « Voir sur la carte » sur chaque fiche pour centrer la carte sur la destination.
+- mise en page pleine largeur : sur grand écran, la carte reste fixe à gauche pendant que la liste défile à droite (survoler une fiche met son repère en évidence) ; sous 1100 px, une seule colonne avec la carte au-dessus.
 
 ## Coller un texte (extraction d'adresses)
 

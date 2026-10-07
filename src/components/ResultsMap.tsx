@@ -9,6 +9,8 @@ interface ResultsMapProps {
   results: RankedAddress[];
   /** Index du résultat à mettre en avant (bouton « Voir sur la carte »). */
   focus: { index: number; nonce: number } | null;
+  /** Index du résultat survolé dans la liste : son repère est mis en évidence. */
+  highlight?: number | null;
   /** Clic sur « Voir la fiche » dans une bulle. */
   onShowCard: (index: number) => void;
 }
@@ -72,7 +74,7 @@ function popupContent(point: MapPoint, onShowCard: (index: number) => void): HTM
   return root;
 }
 
-export default function ResultsMap({ origin, results, focus, onShowCard }: ResultsMapProps) {
+export default function ResultsMap({ origin, results, focus, highlight = null, onShowCard }: ResultsMapProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<L.Map | null>(null);
   const layerRef = useRef<L.LayerGroup | null>(null);
@@ -93,7 +95,12 @@ export default function ResultsMap({ origin, results, focus, onShowCard }: Resul
     mapRef.current = map;
     layerRef.current = L.layerGroup().addTo(map);
 
+    // La carte suit la taille de sa colonne (mise en page pleine largeur / mobile).
+    const resizeObserver = new ResizeObserver(() => map.invalidateSize());
+    resizeObserver.observe(containerRef.current);
+
     return () => {
+      resizeObserver.disconnect();
       map.remove();
       mapRef.current = null;
       layerRef.current = null;
@@ -152,10 +159,26 @@ export default function ResultsMap({ origin, results, focus, onShowCard }: Resul
     const map = mapRef.current;
     const marker = markersRef.current.get(focus.index);
     if (!map || !marker) return;
-    containerRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    // Ne fait défiler la page que si la carte n'est pas visible (mobile).
+    const rect = containerRef.current?.getBoundingClientRect();
+    if (rect && (rect.bottom < 80 || rect.top > window.innerHeight - 80)) {
+      containerRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
     map.flyTo(marker.getLatLng(), Math.max(map.getZoom(), 14), { duration: 0.6 });
     marker.openPopup();
   }, [focus]);
+
+  useEffect(() => {
+    if (highlight == null) return undefined;
+    const marker = markersRef.current.get(highlight);
+    if (!marker) return undefined;
+    marker.getElement()?.classList.add('is-highlighted');
+    marker.setZIndexOffset(5000);
+    return () => {
+      marker.getElement()?.classList.remove('is-highlighted');
+      marker.setZIndexOffset(1000 - highlight);
+    };
+  }, [highlight, results]);
 
   const tiers = new Set<MarkerTier>(mapPoints(results).map((point) => point.tier));
 

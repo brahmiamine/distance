@@ -104,6 +104,7 @@ export default function App() {
   const [results, setResults] = useState<RankedAddress[]>([]);
   const [departureTime, setDepartureTime] = useState<Date | null>(null);
   const [mapFocus, setMapFocus] = useState<{ index: number; nonce: number } | null>(null);
+  const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
 
   const showOnMap = (index: number) =>
     setMapFocus((current) => ({ index, nonce: (current?.nonce ?? 0) + 1 }));
@@ -289,18 +290,19 @@ export default function App() {
       </section>
 
       <section className="panel form-panel animated-panel">
-        <form onSubmit={compare}>
-          <div className="field-heading">
-            <div>
-              <label htmlFor="reference">
-                <MapPin size={17} />
-                Adresse de départ
-              </label>
-              <span>Adresse de référence utilisée comme origine pour tous les trajets</span>
-            </div>
-            <button type="button" className="text-button" onClick={clearAll}>
-              Effacer
-            </button>
+        <form onSubmit={compare} className="form-grid">
+          <div className="form-col form-col-addresses">
+            <div className="field-heading">
+              <div>
+                <label htmlFor="reference">
+                  <MapPin size={17} />
+                  Adresse de départ
+                </label>
+                <span>Adresse de référence utilisée comme origine pour tous les trajets</span>
+              </div>
+              <button type="button" className="text-button" onClick={clearAll}>
+                Effacer
+              </button>
           </div>
 
           <div className="input-shell">
@@ -369,69 +371,71 @@ export default function App() {
             placeholder={EXAMPLE_ADDRESSES}
             rows={9}
           />
+          </div>
 
-          <fieldset>
-            <legend>Zone des destinations à calculer</legend>
-            <div className="transport-options zone-options" role="radiogroup">
-              {ZONES.map((option) => (
-                <label key={option} className={zone === option ? 'chip active' : 'chip'}>
-                  <input
-                    type="radio"
-                    name="zone"
-                    value={option}
-                    checked={zone === option}
-                    onChange={() => setZone(option)}
-                  />
-                  <span className="zone-text">
-                    <strong>{ZONE_LABELS[option]}</strong>
-                    <small>{ZONE_HINTS[option]}</small>
-                  </span>
-                </label>
-              ))}
-            </div>
-            {addresses.length > 0 && (zone !== 'all' || zonePreview.kept.length > MAX_ADDRESSES) && (
-              <p className={zonePreview.kept.length > MAX_ADDRESSES ? 'zone-summary over-limit' : 'zone-summary'}>
-                <strong>{zonePreview.kept.length}</strong> adresse{zonePreview.kept.length > 1 ? 's' : ''} à
-                calculer
-                {zonePreview.excluded.length > 0 && (
-                  <> · <strong>{zonePreview.excluded.length}</strong> hors zone ignorée{zonePreview.excluded.length > 1 ? 's' : ''}</>
-                )}
-                {zonePreview.kept.length > MAX_ADDRESSES && <> · maximum {MAX_ADDRESSES} : restreignez la zone</>}
-                {zonePreview.unknown.length > 0 && (
-                  <> · {zonePreview.unknown.length} sans code postal (vérifiée{zonePreview.unknown.length > 1 ? 's' : ''} après géocodage)</>
-                )}
-              </p>
-            )}
-          </fieldset>
+          <div className="form-col form-col-options">
+            <fieldset>
+              <legend>Zone des destinations à calculer</legend>
+              <div className="transport-options zone-options" role="radiogroup">
+                {ZONES.map((option) => (
+                  <label key={option} className={zone === option ? 'chip active' : 'chip'}>
+                    <input
+                      type="radio"
+                      name="zone"
+                      value={option}
+                      checked={zone === option}
+                      onChange={() => setZone(option)}
+                    />
+                    <span className="zone-text">
+                      <strong>{ZONE_LABELS[option]}</strong>
+                      <small>{ZONE_HINTS[option]}</small>
+                    </span>
+                  </label>
+                ))}
+              </div>
+              {addresses.length > 0 && (zone !== 'all' || zonePreview.kept.length > MAX_ADDRESSES) && (
+                <p className={zonePreview.kept.length > MAX_ADDRESSES ? 'zone-summary over-limit' : 'zone-summary'}>
+                  <strong>{zonePreview.kept.length}</strong> adresse{zonePreview.kept.length > 1 ? 's' : ''} à
+                  calculer
+                  {zonePreview.excluded.length > 0 && (
+                    <> · <strong>{zonePreview.excluded.length}</strong> hors zone ignorée{zonePreview.excluded.length > 1 ? 's' : ''}</>
+                  )}
+                  {zonePreview.kept.length > MAX_ADDRESSES && <> · maximum {MAX_ADDRESSES} : restreignez la zone</>}
+                  {zonePreview.unknown.length > 0 && (
+                    <> · {zonePreview.unknown.length} sans code postal (vérifiée{zonePreview.unknown.length > 1 ? 's' : ''} après géocodage)</>
+                  )}
+                </p>
+              )}
+            </fieldset>
 
-          <fieldset>
-            <legend>Transports autorisés</legend>
-            <div className="transport-options">
-              {(Object.keys(TYPE_LABELS) as TransitType[]).map((type) => (
-                <label key={type} className={selectedTypes.includes(type) ? 'chip active' : 'chip'}>
-                  <input
-                    type="checkbox"
-                    checked={selectedTypes.includes(type)}
-                    onChange={() => toggleType(type)}
-                  />
-                  <span className={`mode-icon mode-${type}`}>
-                    <TransportIcon type={type} size={17} />
-                  </span>
-                  {TYPE_LABELS[type]}
-                </label>
-              ))}
-            </div>
-          </fieldset>
+            <fieldset>
+              <legend>Transports autorisés</legend>
+              <div className="transport-options">
+                {(Object.keys(TYPE_LABELS) as TransitType[]).map((type) => (
+                  <label key={type} className={selectedTypes.includes(type) ? 'chip active' : 'chip'}>
+                    <input
+                      type="checkbox"
+                      checked={selectedTypes.includes(type)}
+                      onChange={() => toggleType(type)}
+                    />
+                    <span className={`mode-icon mode-${type}`}>
+                      <TransportIcon type={type} size={17} />
+                    </span>
+                    {TYPE_LABELS[type]}
+                  </label>
+                ))}
+              </div>
+            </fieldset>
 
-          <div className="criteria-box">
-            <strong>
-              <Trophy size={17} />
-              Priorités du classement
-            </strong>
-            <span><Footprints size={16} /> Peu de marche</span>
-            <span><ArrowRightLeft size={16} /> Peu de correspondances</span>
-            <span><Clock size={16} /> Temps et attente raisonnables</span>
-            <span><Navigation size={16} /> Distance plus courte</span>
+            <div className="criteria-box">
+              <strong>
+                <Trophy size={17} />
+                Priorités du classement
+              </strong>
+              <span><Footprints size={16} /> Peu de marche</span>
+              <span><ArrowRightLeft size={16} /> Peu de correspondances</span>
+              <span><Clock size={16} /> Temps et attente raisonnables</span>
+              <span><Navigation size={16} /> Distance plus courte</span>
           </div>
 
           {globalError && <div className="alert error">{globalError}</div>}
@@ -445,6 +449,7 @@ export default function App() {
             </span>
           </button>
           {progress && <p className="progress"><span />{progress}</p>}
+          </div>
         </form>
       </section>
 
@@ -467,179 +472,188 @@ export default function App() {
             </div>
           </div>
 
-          <ResultsMap
-            origin={referenceAddress}
-            results={results}
-            focus={mapFocus}
-            onShowCard={showCard}
-          />
+          <div className="results-layout">
+            <aside className="results-map-col" aria-label="Carte des résultats">
+              <ResultsMap
+                origin={referenceAddress}
+                results={results}
+                focus={mapFocus}
+                highlight={hoveredIndex}
+                onShowCard={showCard}
+              />
+            </aside>
 
-          <div className="results-heading">
-            <div>
-              <span className="eyebrow">
-                <Sparkles size={14} />
-                Recommandations
-              </span>
-              <h2>Meilleures adresses pour les transports</h2>
-            </div>
-            <span className="method-note">Les rangs ex æquo partagent la même position</span>
-          </div>
-
-          {excluded.length > 0 && (
-            <details className="excluded-note">
-              <summary>
-                {excluded.length} adresse{excluded.length > 1 ? 's' : ''} hors zone « {ZONE_LABELS[resultZone]} »
-                non calculée{excluded.length > 1 ? 's' : ''}
-              </summary>
-              <ul>
-                {excluded.map((item) => (
-                  <li key={item.input}>
-                    {item.label ?? item.input}
-                    {item.label && item.postcode ? ` (${item.postcode})` : ''}
-                  </li>
-                ))}
-              </ul>
-            </details>
-          )}
-
-          <div className="results-list">
-            {results.map((result, index) => (
-              <article
-                className={index === 0 ? 'result-card top-result result-reveal' : 'result-card result-reveal'}
-                key={`${result.address.input}-${index}`}
-                id={`result-${index}`}
-                style={{ animationDelay: `${index * 90}ms` }}
-              >
-                <div className={index === 0 ? 'rank rank-first' : 'rank'}>
-                  {index === 0 ? <Trophy size={20} /> : `#${result.rank ?? index + 1}`}
+            <div className="results-list-col">
+              <div className="results-heading">
+                <div>
+                  <span className="eyebrow">
+                    <Sparkles size={14} />
+                    Recommandations
+                  </span>
+                  <h2>Meilleures adresses pour les transports</h2>
                 </div>
-                <div className="result-main">
-                  <div className="result-title-row">
-                    <div className="destination-title">
-                      <MapPin size={17} />
-                      <h3>{result.address.label}</h3>
-                    </div>
-                    <div className="result-flags">
-                      {result.tied && <span className="flag tie">ex æquo</span>}
-                      {result.journey?.kind === 'walk' && (
-                        <span className="flag walk"><Footprints size={13} /> à pied</span>
-                      )}
-                    </div>
-                  </div>
+                <span className="method-note">Les rangs ex æquo partagent la même position</span>
+              </div>
 
-                  {result.percentile != null && (
-                    <div className="relative-score">
-                      <div className="relative-bar">
-                        <span style={{ width: `${result.percentile}%` }} />
-                      </div>
-                      <small>{percentileLabel(result.percentile)}</small>
-                    </div>
-                  )}
+              {excluded.length > 0 && (
+                <details className="excluded-note">
+                  <summary>
+                    {excluded.length} adresse{excluded.length > 1 ? 's' : ''} hors zone « {ZONE_LABELS[resultZone]} »
+                    non calculée{excluded.length > 1 ? 's' : ''}
+                  </summary>
+                  <ul>
+                    {excluded.map((item) => (
+                      <li key={item.input}>
+                        {item.label ?? item.input}
+                        {item.label && item.postcode ? ` (${item.postcode})` : ''}
+                      </li>
+                    ))}
+                  </ul>
+                </details>
+              )}
 
-                  {result.error || !result.journey ? (
-                    <div className="alert error compact">{result.error ?? 'Itinéraire introuvable'}</div>
-                  ) : (
-                    <>
-                      <div className="metrics-grid">
-                        <div className="metric">
-                          <Clock size={17} />
-                          <span>Trajet</span>
-                          <strong>{formatMinutes(result.journey.durationMinutes)}</strong>
-                          {result.journey.averageWaitMinutes >= 1 && (
-                            <small>+ {formatMinutes(result.journey.averageWaitMinutes)} d’attente moy.</small>
+              <div className="results-list">
+                {results.map((result, index) => (
+                  <article
+                    className={index === 0 ? 'result-card top-result result-reveal' : 'result-card result-reveal'}
+                    key={`${result.address.input}-${index}`}
+                    id={`result-${index}`}
+                    onMouseEnter={() => setHoveredIndex(index)}
+                    onMouseLeave={() => setHoveredIndex((current) => (current === index ? null : current))}
+                    style={{ animationDelay: `${index * 90}ms` }}
+                  >
+                    <div className={index === 0 ? 'rank rank-first' : 'rank'}>
+                      {index === 0 ? <Trophy size={20} /> : `#${result.rank ?? index + 1}`}
+                    </div>
+                    <div className="result-main">
+                      <div className="result-title-row">
+                        <div className="destination-title">
+                          <MapPin size={17} />
+                          <h3>{result.address.label}</h3>
+                        </div>
+                        <div className="result-flags">
+                          {result.tied && <span className="flag tie">ex æquo</span>}
+                          {result.journey?.kind === 'walk' && (
+                            <span className="flag walk"><Footprints size={13} /> à pied</span>
                           )}
                         </div>
-                        <div className="metric priority">
-                          <Footprints size={17} />
-                          <span>Marche totale</span>
-                          <strong>{formatMinutes(result.journey.walkingMinutes)}</strong>
-                          <small>{formatDistance(result.journey.walkingMeters)}</small>
-                        </div>
-                        <div className="metric priority">
-                          <ArrowRightLeft size={17} />
-                          <span>Correspondances</span>
-                          <strong>{result.journey.transfers}</strong>
-                        </div>
-                        <div className="metric">
-                          <TrainFront size={17} />
-                          <span>Transports pris</span>
-                          <strong>{result.journey.transportCount}</strong>
-                        </div>
                       </div>
 
-                      {result.journey.kind === 'walk' ? (
-                        <div className="walk-details">
-                          <div>
-                            <span><Footprints size={15} /> Trajet direct à pied (plus simple qu’en transport)</span>
-                            <strong>
-                              {formatMinutes(result.journey.walkingMinutes)} ·{' '}
-                              {formatDistance(result.journey.walkingMeters)}
-                            </strong>
+                      {result.percentile != null && (
+                        <div className="relative-score">
+                          <div className="relative-bar">
+                            <span style={{ width: `${result.percentile}%` }} />
                           </div>
+                          <small>{percentileLabel(result.percentile)}</small>
                         </div>
+                      )}
+
+                      {result.error || !result.journey ? (
+                        <div className="alert error compact">{result.error ?? 'Itinéraire introuvable'}</div>
                       ) : (
-                        <div className="walk-details">
-                          <div>
-                            <span><Navigation size={15} /> Départ → 1er transport</span>
-                            <strong>
-                              {formatMinutes(result.journey.startWalkMinutes)} ·{' '}
-                              {formatDistance(result.journey.startWalkMeters)}
-                            </strong>
+                        <>
+                          <div className="metrics-grid">
+                            <div className="metric">
+                              <Clock size={17} />
+                              <span>Trajet</span>
+                              <strong>{formatMinutes(result.journey.durationMinutes)}</strong>
+                              {result.journey.averageWaitMinutes >= 1 && (
+                                <small>+ {formatMinutes(result.journey.averageWaitMinutes)} d’attente moy.</small>
+                              )}
+                            </div>
+                            <div className="metric priority">
+                              <Footprints size={17} />
+                              <span>Marche totale</span>
+                              <strong>{formatMinutes(result.journey.walkingMinutes)}</strong>
+                              <small>{formatDistance(result.journey.walkingMeters)}</small>
+                            </div>
+                            <div className="metric priority">
+                              <ArrowRightLeft size={17} />
+                              <span>Correspondances</span>
+                              <strong>{result.journey.transfers}</strong>
+                            </div>
+                            <div className="metric">
+                              <TrainFront size={17} />
+                              <span>Transports pris</span>
+                              <strong>{result.journey.transportCount}</strong>
+                            </div>
                           </div>
-                          <div>
-                            <span><MapPin size={15} /> Dernier transport → adresse</span>
-                            <strong>
-                              {formatMinutes(result.journey.endWalkMinutes)} ·{' '}
-                              {formatDistance(result.journey.endWalkMeters)}
-                            </strong>
+
+                          {result.journey.kind === 'walk' ? (
+                            <div className="walk-details">
+                              <div>
+                                <span><Footprints size={15} /> Trajet direct à pied (plus simple qu’en transport)</span>
+                                <strong>
+                                  {formatMinutes(result.journey.walkingMinutes)} ·{' '}
+                                  {formatDistance(result.journey.walkingMeters)}
+                                </strong>
+                              </div>
+                            </div>
+                          ) : (
+                            <div className="walk-details">
+                              <div>
+                                <span><Navigation size={15} /> Départ → 1er transport</span>
+                                <strong>
+                                  {formatMinutes(result.journey.startWalkMinutes)} ·{' '}
+                                  {formatDistance(result.journey.startWalkMeters)}
+                                </strong>
+                              </div>
+                              <div>
+                                <span><MapPin size={15} /> Dernier transport → adresse</span>
+                                <strong>
+                                  {formatMinutes(result.journey.endWalkMinutes)} ·{' '}
+                                  {formatDistance(result.journey.endWalkMeters)}
+                                </strong>
+                              </div>
+                            </div>
+                          )}
+
+                          {result.journey.lines.length > 0 && (
+                            <div className="journey-lines">
+                              <span><Route size={15} /> Itinéraire recommandé</span>
+                              <div className="line-flow">
+                                {result.journey.lines.map((line, lineIndex) => (
+                                  <span className="line-pill" key={`${line}-${lineIndex}`}>
+                                    {line}
+                                  </span>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+
+                          <div className="meta-row">
+                            <span><Navigation size={15} /> Distance directe depuis le départ</span>
+                            <strong>{formatDistance(result.directDistanceMeters!)}</strong>
                           </div>
-                        </div>
-                      )}
 
-                      {result.journey.lines.length > 0 && (
-                        <div className="journey-lines">
-                          <span><Route size={15} /> Itinéraire recommandé</span>
-                          <div className="line-flow">
-                            {result.journey.lines.map((line, lineIndex) => (
-                              <span className="line-pill" key={`${line}-${lineIndex}`}>
-                                {line}
-                              </span>
-                            ))}
-                          </div>
-                        </div>
+                          {result.comparison && (
+                            <div className="actions">
+                              <button type="button" onClick={() => showOnMap(index)}>
+                                Voir sur la carte <MapIcon size={14} />
+                              </button>
+                              <a href={result.comparison.googleMaps} target="_blank" rel="noreferrer">
+                                Google Maps <ExternalLink size={14} />
+                              </a>
+                              <a href={result.comparison.citymapper} target="_blank" rel="noreferrer">
+                                Citymapper <ExternalLink size={14} />
+                              </a>
+                            </div>
+                          )}
+                        </>
                       )}
+                    </div>
+                  </article>
+                ))}
+              </div>
 
-                      <div className="meta-row">
-                        <span><Navigation size={15} /> Distance directe depuis le départ</span>
-                        <strong>{formatDistance(result.directDistanceMeters!)}</strong>
-                      </div>
-
-                      {result.comparison && (
-                        <div className="actions">
-                          <button type="button" onClick={() => showOnMap(index)}>
-                            Voir sur la carte <MapIcon size={14} />
-                          </button>
-                          <a href={result.comparison.googleMaps} target="_blank" rel="noreferrer">
-                            Google Maps <ExternalLink size={14} />
-                          </a>
-                          <a href={result.comparison.citymapper} target="_blank" rel="noreferrer">
-                            Citymapper <ExternalLink size={14} />
-                          </a>
-                        </div>
-                      )}
-                    </>
-                  )}
-                </div>
-              </article>
-            ))}
+              <p className="footnote">
+                Le calcul utilise les horaires d’un jour ouvré à 9 h et un coût « ressenti » : une
+                minute de marche ou d’attente pèse plus qu’une minute assis, chaque correspondance est
+                pénalisée et la marche directe est retenue quand elle est plus simple. Le pourcentage
+                indiqué est un percentile <strong>relatif au lot comparé</strong>, pas une note absolue.
+              </p>
+            </div>
           </div>
-
-          <p className="footnote">
-            Le calcul utilise les horaires d’un jour ouvré à 9 h et un coût « ressenti » : une
-            minute de marche ou d’attente pèse plus qu’une minute assis, chaque correspondance est
-            pénalisée et la marche directe est retenue quand elle est plus simple. Le pourcentage indiqué est un percentile <strong>relatif
-            au lot comparé</strong>, pas une note absolue.
-          </p>
         </section>
       )}
 
