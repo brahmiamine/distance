@@ -85,9 +85,10 @@ export default function ResultsMap({ origin, results, focus, highlight = null, o
   useEffect(() => {
     if (!containerRef.current) return undefined;
     const map = L.map(containerRef.current, { scrollWheelZoom: false, zoomControl: true });
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
       maxZoom: 19,
-      attribution: '&copy; contributeurs <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+      subdomains: 'abcd',
+      attribution: '&copy; contributeurs <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>',
     }).addTo(map);
     // Molette active seulement après un clic sur la carte (évite de piéger le défilement).
     map.on('click', () => map.scrollWheelZoom.enable());
@@ -116,7 +117,7 @@ export default function ResultsMap({ origin, results, focus, highlight = null, o
     markersRef.current.clear();
 
     const originLatLng = L.latLng(origin.lat, origin.lon);
-    const route = L.polyline([], { color: '#3158e8', weight: 3, opacity: 0.75, dashArray: '6 8' });
+    const route = L.polyline([], { color: '#9184d9', weight: 3, opacity: 0.9, dashArray: '8 6' });
     layer.addLayer(route);
 
     L.marker(originLatLng, { icon: ORIGIN_ICON, title: 'Départ' })
@@ -183,7 +184,7 @@ export default function ResultsMap({ origin, results, focus, highlight = null, o
   const tiers = new Set<MarkerTier>(mapPoints(results).map((point) => point.tier));
 
   return (
-    <div className="map-card result-reveal">
+    <div className="map-card">
       <div ref={containerRef} className="results-map" role="region" aria-label="Carte des adresses" />
       <div className="map-legend">
         <span><i className="legend-dot legend-origin" /> Départ</span>
