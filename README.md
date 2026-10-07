@@ -51,9 +51,11 @@ Le bouton **« Coller un texte »** analyse un texte libre (par ex. une fiche Do
 
 - voie et code postal / ville sur deux lignes successives ;
 - adresse complète sur une seule ligne (« 67 Rue Voltaire 92300 Levallois-Perret ») ;
-- numéros `bis` / `ter` / `quater`, mentions `CEDEX`, principaux types de voie.
+- préfixe avant la voie (« Adresse : 12, rue Bellot, 75019 Paris », nom d'établissement…) ;
+- numéros `bis` / `ter` / `quater` / `B`, plages (« 7-11 » → « 7 »), mentions `CEDEX`, principaux types de voie ;
+- abréviations développées pour le géocodeur (`bd`, `bld` → boulevard, `av` → avenue).
 
-Les adresses détectées sont dédoublonnées puis ajoutées au champ « Adresses de destination ». L'extraction ne gère pas les lieux-dits, les adresses sans numéro ni les adresses hors de France ; c'est ensuite le géocodage qui valide chaque adresse.
+Les adresses détectées sont dédoublonnées puis ajoutées au champ « Adresses de destination ». L'extraction ne gère pas les lieux-dits, les adresses sans numéro (sauf après « Adresse : ») ni les adresses hors de France ; c'est ensuite le géocodage qui valide chaque adresse.
 
 ## Sources
 

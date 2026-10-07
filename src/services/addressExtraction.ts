@@ -26,10 +26,30 @@ const STREET_TYPES = [
   'residence', 'esplanade', 'impasse', 'montée', 'montee', 'descente', 'chemin',
   'sentier', 'traverse', 'domaine', 'allée', 'allee', 'square', 'passage', 'villa',
   'place', 'route', 'quai', 'cours', 'sente', 'voie', 'clos', 'cité', 'cite', 'hameau',
-  'avenue', 'bd', 'bld', 'rue', 'av', 'côte', 'cote',
+  'chaussée', 'chaussee', 'parvis', 'promenade', 'faubourg', 'galerie', 'cour', 'mail',
+  'bd', 'bld', 'blvd', 'rue', 'av', 'côte', 'cote',
 ].join('|');
 
-const STREET_RE = new RegExp(`^\\d{1,4}\\s?(?:bis|ter|quater)?[,]?\\s+(?:${STREET_TYPES})\\b`, 'i');
+/**
+ * Début de voie : numéro (plage « 7-11 », suffixe « bis » / « B » éventuels)
+ * suivi d'un type de voie. Recherché n'importe où dans la ligne pour ignorer
+ * les préfixes (« Adresse : », nom d'établissement…).
+ */
+const STREET_START_RE = new RegExp(
+  `(?:^|[^\\p{L}\\d-])(\\d{1,4}(?:\\s?-\\s?\\d{1,4})?(?:\\s?(?:bis|ter|quater|[a-d])\\b)?[,.]?\\s+(?:${STREET_TYPES})\\.?(?=\\s))`,
+  'iu',
+);
+
+const STREET_TYPE_RE = new RegExp(`(?:^|\\s)(?:${STREET_TYPES})\\.?(?=\\s)`, 'i');
+
+/** Libellé explicite précédant une adresse, même sans numéro de voie. */
+const ADDRESS_LABEL_RE =
+  /^(?:adresse(?:\s+postale)?|address|lieu|localisation|si[eè]ge(?:\s+social)?)\s*:\s*/i;
+
+const ABBREVIATIONS: Array<[RegExp, string]> = [
+  [/^(\S+(?:\s(?:bis|ter|quater|[a-d]))?\s)(?:bd|bld|blvd)\.?(?=\s)/i, '$1boulevard'],
+  [/^(\S+(?:\s(?:bis|ter|quater|[a-d]))?\s)av\.?(?=\s)/i, '$1avenue'],
+];
 
 interface PostalCity {
   postcode: string;
@@ -50,8 +70,40 @@ function matchPostalCity(rawLine: string): PostalCity | null {
   return { postcode, city, start };
 }
 
-function isStreetLine(line: string): boolean {
-  return STREET_RE.test(line.replace(/\s+/g, ' ').trim());
+/** Position du début de la voie dans la ligne, ou -1. */
+function streetStart(line: string): number {
+  const match = STREET_START_RE.exec(line);
+  if (!match) return -1;
+  return match.index + match[0].length - match[1].length;
+}
+
+/**
+ * Nettoie la voie pour le géocodeur : plage de numéros réduite au premier
+ * (« 7-11 » → « 7 »), virgule après le numéro retirée, abréviations courantes
+ * développées (« bld » → « boulevard »).
+ */
+export function normalizeStreet(street: string): string {
+  let result = street
+    .replace(/\s+/g, ' ')
+    .replace(/^(\d{1,4})\s?-\s?\d{1,4}\b/, '$1')
+    .replace(/^(\d{1,4}(?:\s?(?:bis|ter|quater|[a-d])\b)?)\s*[,.]\s*/i, '$1 ')
+    .replace(/[,;\s]+$/, '')
+    .trim();
+  for (const [pattern, replacement] of ABBREVIATIONS) result = result.replace(pattern, replacement);
+  return result;
+}
+
+/** Partie « voie » d'une ligne : depuis le numéro, ou après un libellé « Adresse : ». */
+function streetPart(line: string, end = line.length): string | null {
+  const start = streetStart(line);
+  if (start >= 0 && start < end) return normalizeStreet(line.slice(start, end));
+
+  const label = ADDRESS_LABEL_RE.exec(line);
+  if (label) {
+    const rest = line.slice(label[0].length, end).replace(/[,;\s]+$/, '').trim();
+    if (STREET_TYPE_RE.test(` ${rest}`)) return normalizeStreet(rest);
+  }
+  return null;
 }
 
 /** Clé de comparaison insensible à la casse, aux accents et à la ponctuation. */
@@ -70,9 +122,12 @@ export function addressKey(address: string): string {
  * Gère :
  * - la voie et le code postal / ville sur deux lignes successives ;
  * - l'adresse complète sur une seule ligne (« 67 Rue Voltaire 92300 Levallois-Perret ») ;
- * - les numéros bis / ter / quater, les CEDEX, les principaux types de voie.
+ * - un préfixe avant la voie (« Adresse : 12, rue Bellot, 75019 Paris ») ;
+ * - les numéros bis / ter / quater / B, les plages (« 7-11 »), les CEDEX,
+ *   les principaux types de voie et abréviations (bd, bld, av).
  *
- * Ne détecte pas : lieux-dits, adresses sans numéro, adresses hors de France.
+ * Ne détecte pas : lieux-dits, adresses sans numéro (sauf après « Adresse : »),
+ * adresses hors de France.
  * Le résultat est dédoublonné et limité à `max` entrées.
  */
 export function extractAddresses(text: string, max = MAX_ADDRESSES): string[] {
@@ -87,22 +142,25 @@ export function extractAddresses(text: string, max = MAX_ADDRESSES): string[] {
     if (!line) continue;
 
     const postal = matchPostalCity(line);
-    const street = isStreetLine(line);
 
     // Adresse complète sur une seule ligne.
-    if (street && postal) {
-      const streetPart = line.slice(0, postal.start).replace(/[,\s]+$/, '');
-      if (streetPart) found.push(`${streetPart}, ${postal.postcode} ${postal.city}`);
-      continue;
+    if (postal) {
+      const street = streetPart(line, postal.start);
+      if (street) {
+        found.push(`${street}, ${postal.postcode} ${postal.city}`);
+        continue;
+      }
     }
 
     // Voie sur une ligne, code postal sur l'une des deux lignes suivantes.
-    if (street) {
+    const street = streetPart(line);
+    if (street && !postal) {
       for (let next = index + 1; next <= index + 2 && next < lines.length; next += 1) {
         if (consumed.has(next)) continue;
         const nextPostal = matchPostalCity(lines[next]);
         if (nextPostal) {
-          found.push(`${line}, ${nextPostal.postcode} ${nextPostal.city}`);
+          // La ligne suivante peut répéter le reste de l'adresse avant le CP.
+          found.push(`${street}, ${nextPostal.postcode} ${nextPostal.city}`);
           consumed.add(next);
           break;
         }
