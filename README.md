@@ -37,6 +37,14 @@ Chaque destination reçoit un **coût généralisé** exprimé en « minutes res
 - **Classement honnête** : le rang est partagé en cas d'égalité (mention « ex æquo ») et le pourcentage affiché est un **percentile relatif au lot comparé**, jamais une note absolue.
 - **Appels parallélisés** (4 en parallèle) pour comparer plus vite.
 
+## Carte des résultats
+
+Après le calcul, une carte (Leaflet + OpenStreetMap) affiche l'adresse de départ et chaque destination classée :
+
+- repères numérotés par rang, colorés selon le percentile (★ = meilleure, vert, bleu, gris) ;
+- clic sur un repère : résumé du trajet retenu, tracé départ → destination et bouton « Voir la fiche » ;
+- bouton « Voir sur la carte » sur chaque fiche pour centrer la carte sur la destination.
+
 ## Coller un texte (extraction d'adresses)
 
 Le bouton **« Coller un texte »** analyse un texte libre (par ex. une fiche Doctolib) et détecte les adresses postales :

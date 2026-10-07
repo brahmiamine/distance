@@ -7,6 +7,7 @@ import {
   Clock,
   ExternalLink,
   Footprints,
+  Map as MapIcon,
   MapPin,
   Navigation,
   Route,
@@ -16,6 +17,7 @@ import {
   Trophy,
   Wand2,
 } from 'lucide-react';
+import ResultsMap from './components/ResultsMap';
 import { addressKey, extractAddresses } from './services/addressExtraction';
 import { browserCache } from './services/cache';
 import { formatDepartureTime } from './services/departureTime';
@@ -85,6 +87,18 @@ export default function App() {
   const [referenceAddress, setReferenceAddress] = useState<GeocodedAddress | null>(null);
   const [results, setResults] = useState<RankedAddress[]>([]);
   const [departureTime, setDepartureTime] = useState<Date | null>(null);
+  const [mapFocus, setMapFocus] = useState<{ index: number; nonce: number } | null>(null);
+
+  const showOnMap = (index: number) =>
+    setMapFocus((current) => ({ index, nonce: (current?.nonce ?? 0) + 1 }));
+
+  const showCard = (index: number) => {
+    const card = document.getElementById(`result-${index}`);
+    card?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    card?.classList.remove('card-highlight');
+    void card?.offsetWidth;
+    card?.classList.add('card-highlight');
+  };
   const [loading, setLoading] = useState(false);
   const [progress, setProgress] = useState('');
   const [globalError, setGlobalError] = useState('');
@@ -146,6 +160,7 @@ export default function App() {
     event.preventDefault();
     setGlobalError('');
     setResults([]);
+    setMapFocus(null);
     setReferenceAddress(null);
 
     if (!referenceText.trim()) {
@@ -377,6 +392,13 @@ export default function App() {
             </div>
           </div>
 
+          <ResultsMap
+            origin={referenceAddress}
+            results={results}
+            focus={mapFocus}
+            onShowCard={showCard}
+          />
+
           <div className="results-heading">
             <div>
               <span className="eyebrow">
@@ -393,6 +415,7 @@ export default function App() {
               <article
                 className={index === 0 ? 'result-card top-result result-reveal' : 'result-card result-reveal'}
                 key={`${result.address.input}-${index}`}
+                id={`result-${index}`}
                 style={{ animationDelay: `${index * 90}ms` }}
               >
                 <div className={index === 0 ? 'rank rank-first' : 'rank'}>
@@ -501,6 +524,9 @@ export default function App() {
 
                       {result.comparison && (
                         <div className="actions">
+                          <button type="button" onClick={() => showOnMap(index)}>
+                            Voir sur la carte <MapIcon size={14} />
+                          </button>
                           <a href={result.comparison.googleMaps} target="_blank" rel="noreferrer">
                             Google Maps <ExternalLink size={14} />
                           </a>
