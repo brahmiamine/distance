@@ -396,8 +396,6 @@ export default function App() {
         <div className="weights">
           {WEIGHTS.map(({ icon: Icon, value, label, bar }, index) => (
             <div className="weight" data-reveal key={label} style={vars({ '--d': `${index * 0.07}s` })}>
-              <span className="plus tl">+</span><span className="plus tr">+</span>
-              <span className="plus bl">+</span><span className="plus br">+</span>
               <Icon size={24} strokeWidth={1.5} />
               <strong>{value}</strong>
               <span className="weight-label">{label}</span>
