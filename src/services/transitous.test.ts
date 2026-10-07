@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { jsonResponse, stubFetch } from '../test/helpers';
+import { memoryCache } from './cache';
 import type { GeocodedAddress } from '../types';
 import { buildWalkJourney, COST_WEIGHTS, findRecommendedJourney } from './transitous';
 
@@ -198,6 +199,33 @@ describe('findRecommendedJourney', () => {
 
     const journey = await findRecommendedJourney(paris, marseille, ['bus'], { fetchImpl, departureTime });
     expect(journey.lines).toEqual(['OK']);
+  });
+
+  it('met en cache l’itinéraire retenu (compact), pas la réponse brute', async () => {
+    let calls = 0;
+    const fetchImpl = stubFetch(() => {
+      calls += 1;
+      return jsonResponse({
+        itineraries: [itinerary([leg('BUS', 600, { routeShortName: 'A', intermediateStops: 'x'.repeat(50_000) })], 600, 0, at(1))],
+      });
+    });
+    const stored: string[] = [];
+    const base = memoryCache();
+    const cache = {
+      get: base.get,
+      set: async (key: string, value: string, ttl: number) => {
+        stored.push(value);
+        await base.set(key, value, ttl);
+      },
+    };
+
+    const first = await findRecommendedJourney(paris, marseille, ['bus'], { fetchImpl, cache, departureTime });
+    const second = await findRecommendedJourney(paris, marseille, ['bus'], { fetchImpl, cache, departureTime });
+
+    expect(calls).toBe(1);
+    expect(second).toEqual(first);
+    expect(stored).toHaveLength(1);
+    expect(stored[0].length).toBeLessThan(2_000);
   });
 
   it('demande la marche directe et un horaire fixe à MOTIS', async () => {

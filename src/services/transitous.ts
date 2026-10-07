@@ -354,13 +354,50 @@ export async function findRecommendedJourney(
   });
 
   const url = `${PLAN_URL}?${params.toString()}`;
+
+  // On met en cache l'itinéraire retenu (≈ 1 Ko) et non la réponse brute de
+  // MOTIS (300 à 500 Ko), qui saturait le quota du localStorage.
+  const cacheKey = `journey:${JOURNEY_CACHE_VERSION}:${url}`;
+  const cached = await readCachedJourney(context.cache, cacheKey);
+  if (cached) return cached;
+
+  const journey = await computeJourney(url, origin, destination, departure, context);
+  try {
+    await context.cache?.set(cacheKey, JSON.stringify(journey), PLAN_TTL_SECONDS);
+  } catch {
+    // Cache best-effort.
+  }
+  return journey;
+}
+
+/** Version du format mis en cache : à incrémenter si le calcul change. */
+const JOURNEY_CACHE_VERSION = 'v1';
+
+async function readCachedJourney(
+  cache: JourneyContext['cache'],
+  key: string,
+): Promise<JourneyRecommendation | null> {
+  try {
+    const raw = await cache?.get(key);
+    if (!raw) return null;
+    const journey = JSON.parse(raw) as JourneyRecommendation;
+    return journey && typeof journey.preferenceCost === 'number' ? journey : null;
+  } catch {
+    return null;
+  }
+}
+
+async function computeJourney(
+  url: string,
+  origin: GeocodedAddress,
+  destination: GeocodedAddress,
+  departure: Date,
+  context: JourneyContext,
+): Promise<JourneyRecommendation> {
   const data = await fetchJson<PlanResponse>(url, {
     headers: { Accept: 'application/json' },
     fetchImpl: context.fetchImpl,
     signal: context.signal,
-    cache: context.cache,
-    cacheKey: `plan:${url}`,
-    cacheTtlSeconds: PLAN_TTL_SECONDS,
     timeoutMs: context.timeoutMs ?? PLAN_TIMEOUT_MS,
     retries: context.retries ?? PLAN_RETRIES,
     retryDelayMs: context.retryDelayMs ?? PLAN_RETRY_DELAY_MS,

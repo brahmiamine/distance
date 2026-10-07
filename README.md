@@ -43,6 +43,7 @@ Chaque destination reçoit un **coût généralisé** exprimé en « minutes res
 
 - **Géocodage validé** : le code postal et la ville saisis sont comparés aux candidats IGN, les adresses précises (numéro/voie) et le score IGN sont privilégiés, et un rattachement manifestement faux est rejeté avec un message clair.
 - **Résilience réseau** : les appels BAN / MOTIS ont un délai maximal, des nouvelles tentatives (5xx / 429 / réseau) et un cache (mémoire + `localStorage`).
+- **Cache compact** : seul l'itinéraire retenu (≈ 1 Ko) est mis en cache, pas la réponse brute de MOTIS (300 à 500 Ko). Le cache se purge au démarrage (entrées expirées et anciennes) et libère de la place si le quota du `localStorage` est atteint ; les champs du formulaire sont enregistrés sans jamais faire planter l'application.
 - **Repli marche** : si aucun transport n'est pertinent (destination proche), un trajet à pied raisonnable est proposé au lieu d'une erreur.
 - **Classement honnête** : le rang est partagé en cas d'égalité (mention « ex æquo ») et le pourcentage affiché est un **percentile relatif au lot comparé**, jamais une note absolue.
 - **Débit Transitous respecté** : Transitous limite le débit par client (≈ 1 requête / 3 s après une rafale). Les destinations sont d'abord toutes géocodées (4 en parallèle), puis les itinéraires sont calculés 2 par 2, avec un délai de 45 s et des nouvelles tentatives espacées (`Retry-After` respecté). Compter ~1 min pour 30 destinations.

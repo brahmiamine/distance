@@ -19,7 +19,7 @@ import {
 } from 'lucide-react';
 import ResultsMap from './components/ResultsMap';
 import { addressKey, extractAddresses } from './services/addressExtraction';
-import { browserCache } from './services/cache';
+import { browserCache, safeStorageGet, safeStorageSet } from './services/cache';
 import { formatDepartureTime } from './services/departureTime';
 import { DEFAULT_TRANSIT_TYPES, MAX_ADDRESSES, rankAddresses, type ExcludedAddress } from './services/ranking';
 import { preFilterByZone, ZONE_LABELS, ZONES, type Zone } from './services/zoneFilter';
@@ -47,7 +47,7 @@ const ZONE_HINTS: Record<Zone, string> = {
 };
 
 function readStoredZone(): Zone {
-  const stored = localStorage.getItem(ZONE_STORAGE_KEY);
+  const stored = safeStorageGet(ZONE_STORAGE_KEY);
   return ZONES.includes(stored as Zone) ? (stored as Zone) : 'all';
 }
 
@@ -91,10 +91,10 @@ function confidenceLabel(confidence: GeocodedAddress['confidence']): string {
 
 export default function App() {
   const [referenceText, setReferenceText] = useState(
-    () => localStorage.getItem(REFERENCE_STORAGE_KEY) ?? '',
+    () => safeStorageGet(REFERENCE_STORAGE_KEY) ?? '',
   );
   const [addressesText, setAddressesText] = useState(
-    () => localStorage.getItem(ADDRESSES_STORAGE_KEY) ?? '',
+    () => safeStorageGet(ADDRESSES_STORAGE_KEY) ?? '',
   );
   const [selectedTypes, setSelectedTypes] = useState<TransitType[]>(DEFAULT_TRANSIT_TYPES);
   const [zone, setZone] = useState<Zone>(readStoredZone);
@@ -135,15 +135,15 @@ export default function App() {
   // Persistance à chaque saisie : les champs survivent à un rafraîchissement
   // de la page jusqu'au prochain classement (et au-delà, tant qu'on ne les vide pas).
   useEffect(() => {
-    localStorage.setItem(REFERENCE_STORAGE_KEY, referenceText);
+    safeStorageSet(REFERENCE_STORAGE_KEY, referenceText);
   }, [referenceText]);
 
   useEffect(() => {
-    localStorage.setItem(ADDRESSES_STORAGE_KEY, addressesText);
+    safeStorageSet(ADDRESSES_STORAGE_KEY, addressesText);
   }, [addressesText]);
 
   useEffect(() => {
-    localStorage.setItem(ZONE_STORAGE_KEY, zone);
+    safeStorageSet(ZONE_STORAGE_KEY, zone);
   }, [zone]);
 
   // Aperçu du filtre de zone avant calcul (d'après les codes postaux saisis).
