@@ -237,6 +237,8 @@ legend{margin-bottom:11px;font-size:.9rem;font-weight:850}
 .chip:has(input:focus-visible){outline:2px solid #3158e8;outline-offset:2px}
 .zone-summary{margin:11px 2px 0;color:#5d6880;font-size:.84rem}
 .zone-summary strong{color:#172033}
+.zone-summary.over-limit{color:#a33131}
+.zone-summary.over-limit strong{color:#a33131}
 .excluded-note{margin-bottom:16px;padding:12px 16px;border:1px dashed #d5dcea;border-radius:14px;background:#fafbfe;color:#5d6880;font-size:.85rem}
 .excluded-note summary{cursor:pointer;font-weight:750}
 .excluded-note ul{margin:9px 0 2px;padding-left:20px;line-height:1.6}

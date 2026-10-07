@@ -10,6 +10,14 @@ const WALK_DETOUR_FACTOR = 1.25;
 const MAX_WALK_FALLBACK_MINUTES = 60;
 /** Au-delà, MOTIS ne propose pas de trajet direct à pied. */
 const MAX_DIRECT_WALK_SECONDS = 45 * 60;
+/**
+ * Transitous limite le débit par client (≈ 1 requête / 3 s après une rafale) :
+ * les requêtes patientent côté serveur, d'où un délai long et des nouvelles
+ * tentatives espacées plutôt qu'un abandon après quelques secondes.
+ */
+const PLAN_TIMEOUT_MS = 45_000;
+const PLAN_RETRIES = 3;
+const PLAN_RETRY_DELAY_MS = 2_000;
 
 export interface JourneyContext {
   fetchImpl?: typeof fetch;
@@ -17,6 +25,7 @@ export interface JourneyContext {
   cache?: HttpRequestOptions['cache'];
   timeoutMs?: number;
   retries?: number;
+  retryDelayMs?: number;
   /** Heure de départ de référence (défaut : prochain jour ouvré à 9 h). */
   departureTime?: Date;
 }
@@ -352,8 +361,9 @@ export async function findRecommendedJourney(
     cache: context.cache,
     cacheKey: `plan:${url}`,
     cacheTtlSeconds: PLAN_TTL_SECONDS,
-    timeoutMs: context.timeoutMs,
-    retries: context.retries,
+    timeoutMs: context.timeoutMs ?? PLAN_TIMEOUT_MS,
+    retries: context.retries ?? PLAN_RETRIES,
+    retryDelayMs: context.retryDelayMs ?? PLAN_RETRY_DELAY_MS,
   });
 
   const itineraries = Array.isArray(data.itineraries) ? data.itineraries : [];

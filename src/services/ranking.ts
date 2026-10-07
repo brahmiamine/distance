@@ -7,10 +7,13 @@ import { buildComparisonLinks } from './links';
 import { findRecommendedJourney } from './transitous';
 import { postcodeInZone, preFilterByZone, type Zone } from './zoneFilter';
 
-export const MAX_ADDRESSES = 20;
+/** Destinations calculées au plus en une fois (après filtre de zone). */
+export const MAX_ADDRESSES = 50;
 export const DEFAULT_TRANSIT_TYPES: TransitType[] = ['metro', 'rail', 'tram', 'bus'];
 export const ALL_TRANSIT_TYPES: TransitType[] = ['metro', 'rail', 'tram', 'bus', 'cableway'];
 export const DEFAULT_CONCURRENCY = 4;
+/** Transitous limite le débit par client : plus de parallélisme n'accélère pas. */
+export const DEFAULT_JOURNEY_CONCURRENCY = 2;
 
 /** Deux coûts sont considérés ex æquo en dessous de 2 % d'écart relatif. */
 const TIE_RATIO = 0.02;
@@ -22,7 +25,10 @@ export interface RankContext {
   fetchImpl?: typeof fetch;
   signal?: AbortSignal;
   cache?: CacheStore | null;
+  /** Géocodages simultanés. */
   concurrency?: number;
+  /** Calculs d'itinéraires simultanés. */
+  journeyConcurrency?: number;
   /** Heure de départ de référence (défaut : prochain jour ouvré à 9 h). */
   departureTime?: Date;
 }
@@ -51,11 +57,6 @@ export interface ExcludedAddress {
   /** Libellé géocodé, si l'exclusion a été décidée après géocodage. */
   label?: string;
   postcode?: string;
-}
-
-/** Marqueur interne : destination géocodée hors de la zone choisie. */
-class OutOfZone {
-  constructor(readonly excluded: ExcludedAddress) {}
 }
 
 function isTied(a: number, b: number): boolean {
@@ -142,20 +143,40 @@ export async function rankAddresses({
   const departureTime = context.departureTime ?? referenceDepartureTime();
   const journeyContext = { ...context, departureTime };
   const concurrency = context.concurrency ?? DEFAULT_CONCURRENCY;
-  let completed = 0;
+  const journeyConcurrency = context.journeyConcurrency ?? DEFAULT_JOURNEY_CONCURRENCY;
 
   // Tri préalable sans réseau d'après le code postal saisi : les adresses
   // hors zone ne sont ni géocodées ni calculées.
   const { kept, excluded: preExcluded } = preFilterByZone(addresses, zone);
   const excluded: ExcludedAddress[] = preExcluded.map((input) => ({ input }));
 
-  const outcomes = await mapWithConcurrency(kept, concurrency, async (input) => {
+  // 1. Géocodage (IGN, rapide) de toutes les destinations.
+  onProgress?.(`Géocodage de ${kept.length} destination${kept.length > 1 ? 's' : ''}…`);
+  const geocoded = await mapWithConcurrency(kept, concurrency, async (input) => {
     try {
-      const destination = await geocodeAddress(input, context);
+      return { input, destination: await geocodeAddress(input, context) };
+    } catch (error) {
+      return { input, error: error instanceof Error ? error.message : 'Erreur inconnue' };
+    }
+  });
+
+  const collected: RankedAddress[] = [];
+  const toRoute: Array<{ input: string; destination: GeocodedAddress }> = [];
+  for (const item of geocoded) {
+    if ('error' in item) {
+      collected.push({ address: { input: item.input, label: item.input, lat: 0, lon: 0 }, error: item.error });
+    } else if (item.destination.postcode && !postcodeInZone(item.destination.postcode, zone)) {
       // Adresse saisie sans code postal : la zone est vérifiée sur le géocodage.
-      if (destination.postcode && !postcodeInZone(destination.postcode, zone)) {
-        return new OutOfZone({ input, label: destination.label, postcode: destination.postcode });
-      }
+      excluded.push({ input: item.input, label: item.destination.label, postcode: item.destination.postcode });
+    } else {
+      toRoute.push(item);
+    }
+  }
+
+  // 2. Itinéraires (Transitous, débit limité) : peu de requêtes simultanées.
+  let completed = 0;
+  const routed = await mapWithConcurrency(toRoute, journeyConcurrency, async ({ input, destination }) => {
+    try {
       const directDistanceMeters = haversineDistanceMeters(originAddress, destination);
       const journey = await findRecommendedJourney(originAddress, destination, types, journeyContext);
 
@@ -171,20 +192,15 @@ export async function rankAddresses({
       } satisfies RankedAddress;
     } catch (error) {
       return {
-        address: { input, label: input, lat: 0, lon: 0 },
+        address: { ...destination, input },
         error: error instanceof Error ? error.message : 'Erreur inconnue',
       } satisfies RankedAddress;
     } finally {
       completed += 1;
-      onProgress?.(`Itinéraire ${completed}/${kept.length} — ${input}`);
+      onProgress?.(`Itinéraire ${completed}/${toRoute.length} — ${input}`);
     }
   });
-
-  const collected: RankedAddress[] = [];
-  for (const outcome of outcomes) {
-    if (outcome instanceof OutOfZone) excluded.push(outcome.excluded);
-    else collected.push(outcome);
-  }
+  collected.push(...routed);
 
   applyRanks(collected);
   collected.sort(compareRanked);

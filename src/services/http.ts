@@ -34,6 +34,12 @@ function isRetryableStatus(status: number): boolean {
   return status === 429 || status >= 500;
 }
 
+/** Délai demandé par l'en-tête `Retry-After` (secondes), plafonné à 20 s. */
+function retryAfterDelayMs(header: string | null): number {
+  const seconds = Number(header);
+  return Number.isFinite(seconds) && seconds > 0 ? Math.min(seconds, 20) * 1000 : 0;
+}
+
 /**
  * `fetch` JSON avec timeout, nouvelles tentatives (5xx / 429 / réseau) et cache
  * optionnel. Utilisé côté navigateur et dans les tests.
@@ -63,6 +69,7 @@ export async function fetchJson<T>(url: string, options: HttpRequestOptions = {}
   }
 
   let lastError: unknown;
+  let retryAfterMs = 0;
 
   for (let attempt = 0; attempt <= retries; attempt += 1) {
     if (signal?.aborted) throw new HttpError('Requête annulée');
@@ -79,6 +86,7 @@ export async function fetchJson<T>(url: string, options: HttpRequestOptions = {}
         const error = new HttpError(`Réponse ${response.status}`, response.status);
         if (!isRetryableStatus(response.status) || attempt >= retries) throw error;
         lastError = error;
+        retryAfterMs = retryAfterDelayMs(response.headers.get('retry-after'));
       } else {
         const text = await response.text();
         if (cache && cacheKey && cacheTtlSeconds > 0) {
@@ -97,7 +105,8 @@ export async function fetchJson<T>(url: string, options: HttpRequestOptions = {}
       if (signal) signal.removeEventListener('abort', onAbort);
     }
 
-    await delay(retryDelayMs * (attempt + 1));
+    await delay(Math.max(retryDelayMs * (attempt + 1), retryAfterMs));
+    retryAfterMs = 0;
   }
 
   throw lastError instanceof Error ? lastError : new HttpError('Échec de la requête');

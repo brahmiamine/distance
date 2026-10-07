@@ -45,7 +45,8 @@ Chaque destination reçoit un **coût généralisé** exprimé en « minutes res
 - **Résilience réseau** : les appels BAN / MOTIS ont un délai maximal, des nouvelles tentatives (5xx / 429 / réseau) et un cache (mémoire + `localStorage`).
 - **Repli marche** : si aucun transport n'est pertinent (destination proche), un trajet à pied raisonnable est proposé au lieu d'une erreur.
 - **Classement honnête** : le rang est partagé en cas d'égalité (mention « ex æquo ») et le pourcentage affiché est un **percentile relatif au lot comparé**, jamais une note absolue.
-- **Appels parallélisés** (4 en parallèle) pour comparer plus vite.
+- **Débit Transitous respecté** : Transitous limite le débit par client (≈ 1 requête / 3 s après une rafale). Les destinations sont d'abord toutes géocodées (4 en parallèle), puis les itinéraires sont calculés 2 par 2, avec un délai de 45 s et des nouvelles tentatives espacées (`Retry-After` respecté). Compter ~1 min pour 30 destinations.
+- **Jusqu'à 50 destinations calculées** à la fois, après filtre de zone.
 
 ## Carte des résultats
 
@@ -63,7 +64,10 @@ Le bouton **« Coller un texte »** analyse un texte libre (par ex. une fiche Do
 - adresse complète sur une seule ligne (« 67 Rue Voltaire 92300 Levallois-Perret ») ;
 - préfixe avant la voie (« Adresse : 12, rue Bellot, 75019 Paris », nom d'établissement…) ;
 - numéros `bis` / `ter` / `quater` / `B`, plages (« 7-11 » → « 7 »), mentions `CEDEX`, principaux types de voie ;
-- abréviations développées pour le géocodeur (`bd`, `bld` → boulevard, `av` → avenue).
+- abréviations développées pour le géocodeur (`bd`, `bld`, `bvd` → boulevard, `av` → avenue) ;
+- voie sans numéro ou précédée d'un nom de lieu juste avant la ligne « code postal ville » (« Lycée X Avenue du 11 novembre ») ;
+- compléments retirés : `BP`, `CS`, bâtiment, étage, « code porte »… (un n° de BP n'est jamais pris pour un code postal) ;
+- listes longues : plus de limite à 20 à l'extraction (500 au plus) ; le filtre de zone choisit ensuite ce qui est calculé.
 
 Les adresses détectées sont dédoublonnées puis ajoutées au champ « Adresses de destination ». L'extraction ne gère pas les lieux-dits, les adresses sans numéro (sauf après « Adresse : ») ni les adresses hors de France ; c'est ensuite le géocodage qui valide chaque adresse.
 

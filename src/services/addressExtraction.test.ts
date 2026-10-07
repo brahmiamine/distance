@@ -60,7 +60,84 @@ Paris - Forum ACCORD
 Adresse : 3 bis, rue Jean-Pierre Bloch, 75015 Paris
 Contact : 01-84-79-20-60 / info@accord-langues.com`;
 
+// Extrait de la liste des centres TCF de France Éducation international.
+const FEI_TEXT = `* Centre de passation
+France
+Alixan (Valence) - ELO les langues
+50 bis, cours Emilie du Châtelet BP 15353 Gare TGV Rovaltain
+26300 Alixan (Valence)
+[04-75-75-87-09](tel:04-75-75-87-09)
+Option sessions sur ordinateur disponible
+* Centre de passation
+France
+Bastia - OPRA
+Route Royale
+20600 Bastia
+* Centre de passation
+France
+Cergy-Pontoise - Ressources Formation
+2 rue du Lendemain code porte 2511 - étage 4 Cergy-le-Haut
+95800 Cergy-Pontoise
+* Centre de passation
+France
+Guyancourt - Université de Versailles Saint Quentin-en-Yvelines
+CEREL Aile A 2ème étage Bureau A210 5/7 bd d'Alembert
+78280 Guyancourt
+* Centre de passation
+France
+Mende - GRETA-CFA Gard-Lozère
+Lycée Emile Peytavin Avenue du 11 novembre
+48000 Mende
+* Centre de passation
+France
+Paris - Cours de Civilisation Française de la Sorbonne
+7-11 avenue des chasseurs
+75017 Paris
+* Centre de passation
+France
+Toulouse - Alliance Française
+Bâtiment Maison des Associations 3, bis place Guy Hersant
+31400 Toulouse
+* Centre de passation
+France
+Évry-Courcouronnes - Feel Learning
+37 Rue Michel Ange - -
+91080 Évry-Courcouronnes
+* Centre de passation
+France
+Grenoble cedex 9 - Centre universitaire d'études françaises (CUEF)
+Université Grenoble Alpes CS 40700
+38058 Grenoble cedex 9
+* Centre de passation
+France
+Baie-Mahault (Pointe-à-Pitre) - Fore Alternance, Guadeloupe
+ZI de Jarry 10 Bvd du Marquisat de Houelbourg
+97122 Baie-Mahault (Pointe-à-Pitre)`;
+
 describe('extractAddresses', () => {
+  it('extrait une liste de centres (BP, CS, voies sans numéro, préfixes)', () => {
+    expect(extractAddresses(FEI_TEXT)).toEqual([
+      '50 bis cours Emilie du Châtelet, 26300 Alixan',
+      'Route Royale, 20600 Bastia',
+      '2 rue du Lendemain, 95800 Cergy-Pontoise',
+      "5 boulevard d'Alembert, 78280 Guyancourt",
+      'Avenue du 11 novembre, 48000 Mende',
+      '7 avenue des chasseurs, 75017 Paris',
+      '3 bis place Guy Hersant, 31400 Toulouse',
+      '37 Rue Michel Ange, 91080 Évry-Courcouronnes',
+      '10 boulevard du Marquisat de Houelbourg, 97122 Baie-Mahault',
+    ]);
+  });
+
+  it('ne coupe plus la liste à 20 adresses', () => {
+    const text = Array.from({ length: 35 }, (_, index) => `${index + 1} rue de la Paix\n75002 Paris`).join('\n');
+    expect(extractAddresses(text)).toHaveLength(35);
+  });
+
+  it('ne prend pas une voie sans numéro hors d’un bloc « voie / code postal »', () => {
+    expect(extractAddresses('Cours de français avancé\nRendez-vous ensuite\n75002 Paris')).toEqual([]);
+  });
+
   it('extrait une liste « Adresse : … » avec plages, bis et abréviations', () => {
     expect(extractAddresses(CENTRES_TEXT)).toEqual([
       '12 rue Bellot, 75019 Paris',

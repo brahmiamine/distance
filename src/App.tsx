@@ -171,11 +171,14 @@ export default function App() {
       merged.push(address);
     }
 
-    const limited = merged.slice(0, MAX_ADDRESSES);
-    setAddressesText(limited.join('\n'));
+    // Pas de coupure ici : le filtre de zone choisit ensuite ce qui est calculé.
+    setAddressesText(merged.join('\n'));
     setExtractStatus(
       `${found.length} adresse${found.length > 1 ? 's' : ''} détectée${found.length > 1 ? 's' : ''} · ` +
-        `${limited.length} destination${limited.length > 1 ? 's' : ''} au total.`,
+        `${merged.length} destination${merged.length > 1 ? 's' : ''} au total.` +
+        (preFilterByZone(merged, zone).kept.length > MAX_ADDRESSES
+          ? ` Choisissez une zone : ${MAX_ADDRESSES} adresses au plus sont calculées à la fois.`
+          : ''),
     );
   };
 
@@ -200,7 +203,10 @@ export default function App() {
       return;
     }
     if (zonePreview.kept.length > MAX_ADDRESSES) {
-      setGlobalError(`La V1 accepte au maximum ${MAX_ADDRESSES} adresses à la fois.`);
+      setGlobalError(
+        `${zonePreview.kept.length} adresses à calculer : le maximum est ${MAX_ADDRESSES} à la fois. ` +
+          'Choisissez une zone plus restreinte ou retirez des adresses.',
+      );
       return;
     }
     if (selectedTypes.length === 0) {
@@ -315,7 +321,7 @@ export default function App() {
                 <Route size={17} />
                 Adresses de destination
               </label>
-              <span>Une adresse par ligne · 1 à 20 destinations</span>
+              <span>Une adresse par ligne · {MAX_ADDRESSES} calculées au plus (après filtre de zone)</span>
             </div>
             <button
               type="button"
@@ -383,13 +389,14 @@ export default function App() {
                 </label>
               ))}
             </div>
-            {addresses.length > 0 && zone !== 'all' && (
-              <p className="zone-summary">
+            {addresses.length > 0 && (zone !== 'all' || zonePreview.kept.length > MAX_ADDRESSES) && (
+              <p className={zonePreview.kept.length > MAX_ADDRESSES ? 'zone-summary over-limit' : 'zone-summary'}>
                 <strong>{zonePreview.kept.length}</strong> adresse{zonePreview.kept.length > 1 ? 's' : ''} à
                 calculer
                 {zonePreview.excluded.length > 0 && (
                   <> · <strong>{zonePreview.excluded.length}</strong> hors zone ignorée{zonePreview.excluded.length > 1 ? 's' : ''}</>
                 )}
+                {zonePreview.kept.length > MAX_ADDRESSES && <> · maximum {MAX_ADDRESSES} : restreignez la zone</>}
                 {zonePreview.unknown.length > 0 && (
                   <> · {zonePreview.unknown.length} sans code postal (vérifiée{zonePreview.unknown.length > 1 ? 's' : ''} après géocodage)</>
                 )}

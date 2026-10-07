@@ -28,6 +28,11 @@ describe('extractPostcode / extractCityHint', () => {
     expect(extractCityHint("56 avenue de l'Agent Sarre, 92700, COLOMBES")).toBe('COLOMBES');
   });
 
+  it('prend la ville après un code postal CEDEX', () => {
+    expect(extractCityHint('1 avenue Léon Journault, 92318 Sèvres cedex')).toBe('Sèvres');
+    expect(extractCityHint('2 rue Gustave Eiffel, 62004 Arras')).toBe('Arras');
+  });
+
   it('renvoie undefined si aucun segment sans chiffre', () => {
     expect(extractCityHint('10 rue Y, 75008')).toBeUndefined();
   });

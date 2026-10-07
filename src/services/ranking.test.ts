@@ -105,7 +105,7 @@ describe('rankAddresses', () => {
     expect(ranking[1].percentile).toBeUndefined();
   });
 
-  it('signale la progression une fois par adresse (plus le départ)', async () => {
+  it('signale la progression : départ, géocodage, puis un message par itinéraire', async () => {
     mockJourney.mockResolvedValue(journey(30));
     const onProgress = vi.fn();
 
@@ -117,8 +117,9 @@ describe('rankAddresses', () => {
       context: { concurrency: 2 },
     });
 
-    expect(onProgress).toHaveBeenCalledTimes(5);
-    expect(onProgress).toHaveBeenCalledWith(expect.stringContaining('Géocodage'));
+    expect(onProgress).toHaveBeenCalledTimes(6);
+    expect(onProgress).toHaveBeenCalledWith('Géocodage de 4 destinations…');
+    expect(onProgress).toHaveBeenLastCalledWith(expect.stringMatching(/^Itinéraire 4\/4/));
   });
 
   it('transmet le cache et la concurrence au calcul', async () => {
@@ -139,6 +140,40 @@ describe('rankAddresses', () => {
       ['metro'],
       expect.objectContaining({ cache, departureTime: expect.any(Date) }),
     );
+  });
+});
+
+describe('rankAddresses — débit Transitous', () => {
+  it('limite les calculs d’itinéraires simultanés, indépendamment du géocodage', async () => {
+    let active = 0;
+    let maxActive = 0;
+    mockJourney.mockImplementation(async () => {
+      active += 1;
+      maxActive = Math.max(maxActive, active);
+      await new Promise((resolve) => setTimeout(resolve, 2));
+      active -= 1;
+      return journey(30);
+    });
+
+    const { ranking } = await rankAddresses({
+      origin: 'depart',
+      addresses: ['a', 'b', 'c', 'd', 'e', 'f'],
+      types: ['metro'],
+      context: { concurrency: 6 },
+    });
+
+    expect(ranking).toHaveLength(6);
+    expect(maxActive).toBeLessThanOrEqual(2);
+  });
+
+  it('garde les coordonnées géocodées quand seul l’itinéraire échoue', async () => {
+    mockGeocode.mockImplementation(async (input: string) => ({ ...address(input.trim()), lat: 48.9, lon: 2.3 }));
+    mockJourney.mockRejectedValue(new Error('Failed to fetch'));
+
+    const { ranking } = await rankAddresses({ origin: 'depart', addresses: ['a'], types: ['metro'] });
+
+    expect(ranking[0].error).toBe('Failed to fetch');
+    expect(ranking[0].address.lat).toBe(48.9);
   });
 });
 

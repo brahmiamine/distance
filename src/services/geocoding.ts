@@ -48,7 +48,7 @@ export function extractPostcode(input: string): string | undefined {
   return input.match(/\b(\d{5})\b/)?.[1];
 }
 
-/** Indice de ville : dernier segment sans chiffre (ex. « COLOMBES »). */
+/** Indice de ville : dernier segment sans chiffre (ex. « COLOMBES »), sinon le texte après le code postal. */
 export function extractCityHint(input: string): string | undefined {
   const segments = input
     .split(',')
@@ -57,6 +57,14 @@ export function extractCityHint(input: string): string | undefined {
   for (let index = segments.length - 1; index >= 0; index -= 1) {
     const segment = segments[index];
     if (!/\d/.test(segment) && segment.length >= 3) return segment;
+  }
+  // « 92318 Sèvres cedex » : la ville suit le code postal dans le même segment.
+  for (let index = segments.length - 1; index >= 0; index -= 1) {
+    const city = segments[index]
+      .match(/\b\d{5}\s+([^\d,]{3,})$/)?.[1]
+      ?.replace(/\s+cedex.*$/i, '')
+      .trim();
+    if (city && city.length >= 3) return city;
   }
   return undefined;
 }

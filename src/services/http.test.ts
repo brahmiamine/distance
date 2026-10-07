@@ -34,6 +34,22 @@ describe('fetchJson', () => {
     expect(calls).toBe(2);
   });
 
+  it('respecte l’en-tête Retry-After sur 429', async () => {
+    let calls = 0;
+    const fetchImpl = stubFetch(() => {
+      calls += 1;
+      return calls === 1
+        ? new Response('{}', { status: 429, headers: { 'retry-after': '1' } })
+        : jsonResponse({ ok: true });
+    });
+
+    const started = Date.now();
+    await expect(fetchJson('https://api.test/x', { fetchImpl, retries: 1, retryDelayMs: 1 })).resolves.toEqual({
+      ok: true,
+    });
+    expect(Date.now() - started).toBeGreaterThanOrEqual(900);
+  });
+
   it('ne réessaie pas sur 400', async () => {
     let calls = 0;
     const fetchImpl = stubFetch(() => {

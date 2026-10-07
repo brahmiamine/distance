@@ -1,4 +1,5 @@
-import { MAX_ADDRESSES } from './ranking';
+/** Plafond de sécurité de l'extraction (le filtre de zone trie ensuite). */
+export const MAX_EXTRACTED_ADDRESSES = 500;
 
 /**
  * Code postal français plausible :
@@ -27,7 +28,7 @@ const STREET_TYPES = [
   'sentier', 'traverse', 'domaine', 'allée', 'allee', 'square', 'passage', 'villa',
   'place', 'route', 'quai', 'cours', 'sente', 'voie', 'clos', 'cité', 'cite', 'hameau',
   'chaussée', 'chaussee', 'parvis', 'promenade', 'faubourg', 'galerie', 'cour', 'mail',
-  'bd', 'bld', 'blvd', 'rue', 'av', 'côte', 'cote',
+  'ruelle', 'rocade', 'bd', 'bld', 'blvd', 'bvd', 'rue', 'av', 'côte', 'cote',
 ].join('|');
 
 /**
@@ -36,7 +37,7 @@ const STREET_TYPES = [
  * les préfixes (« Adresse : », nom d'établissement…).
  */
 const STREET_START_RE = new RegExp(
-  `(?:^|[^\\p{L}\\d-])(\\d{1,4}(?:\\s?-\\s?\\d{1,4})?(?:\\s?(?:bis|ter|quater|[a-d])\\b)?[,.]?\\s+(?:${STREET_TYPES})\\.?(?=\\s))`,
+  `(?:^|[^\\p{L}\\d-])(\\d{1,4}(?:\\s?[-/]\\s?\\d{1,4})?(?:,?\\s?(?:bis|ter|quater|[a-d])\\b)?[,.]?\\s+(?:${STREET_TYPES})\\.?(?=\\s))`,
   'iu',
 );
 
@@ -47,7 +48,7 @@ const ADDRESS_LABEL_RE =
   /^(?:adresse(?:\s+postale)?|address|lieu|localisation|si[eè]ge(?:\s+social)?)\s*:\s*/i;
 
 const ABBREVIATIONS: Array<[RegExp, string]> = [
-  [/^(\S+(?:\s(?:bis|ter|quater|[a-d]))?\s)(?:bd|bld|blvd)\.?(?=\s)/i, '$1boulevard'],
+  [/^(\S+(?:\s(?:bis|ter|quater|[a-d]))?\s)(?:bd|bld|blvd|bvd)\.?(?=\s)/i, '$1boulevard'],
   [/^(\S+(?:\s(?:bis|ter|quater|[a-d]))?\s)av\.?(?=\s)/i, '$1avenue'],
 ];
 
@@ -58,16 +59,28 @@ interface PostalCity {
   start: number;
 }
 
+/** Boîte postale / CS : leur numéro à 5 chiffres n'est pas un code postal. */
+const POSTAL_BOX_RE = /\b(?:B\.?\s?P\.?|CS)\s?\d+/gi;
+
 function matchPostalCity(rawLine: string): PostalCity | null {
   const line = rawLine.replace(/\s+/g, ' ').trim();
-  const match = POSTAL_CITY_END.exec(line) ?? POSTAL_CITY_ANY.exec(line);
+  // Masque de même longueur : les positions restent valables sur `line`.
+  const masked = line.replace(POSTAL_BOX_RE, (box) => '#'.repeat(box.length));
+  const match = POSTAL_CITY_END.exec(masked) ?? POSTAL_CITY_ANY.exec(masked);
   if (!match) return null;
 
   const postcode = match[1];
   const city = match[2].replace(/\s+cedex.*$/i, '').trim();
-  const start = line.indexOf(postcode, match.index);
+  const start = masked.indexOf(postcode, match.index);
 
   return { postcode, city, start };
+}
+
+/** Ligne réduite à « code postal ville » (ex. « 20600 Bastia »). */
+function isPostalOnlyLine(line: string | undefined): boolean {
+  if (!line) return false;
+  const postal = matchPostalCity(line);
+  return postal !== null && postal.start === 0;
 }
 
 /** Position du début de la voie dans la ligne, ou -1. */
@@ -78,6 +91,13 @@ function streetStart(line: string): number {
 }
 
 /**
+ * Compléments qui gênent le géocodeur : boîte postale, CS, bâtiment, étage,
+ * « code porte », parenthèses, ou suite après un séparateur « - ».
+ */
+const NOISE_RE =
+  /\s(?:-\s|-$|B\.?\s?P\.?\s?\d|CS\s?\d|code porte\b|b[aâ]t(?:\.|iment\b|\s)|immeuble\b|\d+\s?(?:er|e|[eè]me)\s+[ée]tage\b|[ée]tage\b|rdc\b|bureau\b|z\.?[ai]\.?\s|\().*$/i;
+
+/**
  * Nettoie la voie pour le géocodeur : plage de numéros réduite au premier
  * (« 7-11 » → « 7 »), virgule après le numéro retirée, abréviations courantes
  * développées (« bld » → « boulevard »).
@@ -85,12 +105,32 @@ function streetStart(line: string): number {
 export function normalizeStreet(street: string): string {
   let result = street
     .replace(/\s+/g, ' ')
-    .replace(/^(\d{1,4})\s?-\s?\d{1,4}\b/, '$1')
+    .replace(NOISE_RE, '')
+    .replace(/^(\d{1,4})\s?[-/]\s?\d{1,4}\b/, '$1')
+    .replace(/^(\d{1,4}),?\s?(bis|ter|quater)\b/i, '$1 $2')
     .replace(/^(\d{1,4}(?:\s?(?:bis|ter|quater|[a-d])\b)?)\s*[,.]\s*/i, '$1 ')
-    .replace(/[,;\s]+$/, '')
+    .replace(/[,;\s-]+$/, '')
     .trim();
   for (const [pattern, replacement] of ABBREVIATIONS) result = result.replace(pattern, replacement);
   return result;
+}
+
+const STREET_TYPE_ANYWHERE_RE = new RegExp(
+  `(?:^|[\\s,'’-])((?:${STREET_TYPES})\\.?\\s+\\S.*)$`,
+  'iu',
+);
+
+/**
+ * Voie sans numéro, éventuellement précédée d'un nom de lieu (« Lycée X
+ * Avenue du 11 novembre ») : retenue seulement juste avant une ligne
+ * « code postal ville », pour éviter les faux positifs dans du texte libre.
+ */
+function unnumberedStreet(line: string): string | null {
+  if (/@|https?:|www\./i.test(line)) return null;
+  const match = STREET_TYPE_ANYWHERE_RE.exec(line);
+  if (!match) return null;
+  const street = normalizeStreet(match[1]);
+  return /\p{L}{3,}/u.test(street.replace(STREET_TYPE_RE, ' ')) ? street : null;
 }
 
 /** Partie « voie » d'une ligne : depuis le numéro, ou après un libellé « Adresse : ». */
@@ -130,7 +170,7 @@ export function addressKey(address: string): string {
  * adresses hors de France.
  * Le résultat est dédoublonné et limité à `max` entrées.
  */
-export function extractAddresses(text: string, max = MAX_ADDRESSES): string[] {
+export function extractAddresses(text: string, max = MAX_EXTRACTED_ADDRESSES): string[] {
   const lines = text.split(/\r?\n/).map((line) => line.replace(/\s+/g, ' ').trim());
   const consumed = new Set<number>();
   const found: string[] = [];
@@ -153,7 +193,7 @@ export function extractAddresses(text: string, max = MAX_ADDRESSES): string[] {
     }
 
     // Voie sur une ligne, code postal sur l'une des deux lignes suivantes.
-    const street = streetPart(line);
+    const street = streetPart(line) ?? (isPostalOnlyLine(lines[index + 1]) ? unnumberedStreet(line) : null);
     if (street && !postal) {
       for (let next = index + 1; next <= index + 2 && next < lines.length; next += 1) {
         if (consumed.has(next)) continue;
